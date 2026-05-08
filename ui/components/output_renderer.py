@@ -1,0 +1,295 @@
+"""Results output format rendering — metrics, table, JSON, shareable text, ticket notes."""
+from __future__ import annotations
+
+import base64
+
+import streamlit as st
+import streamlit.components.v1 as components
+
+try:
+    import pandas as pd
+except Exception:
+    pd = None
+
+
+def render_results_output(output_format: str, run_results: dict) -> None:
+    """Render the results section: summary metrics + selected output format."""
+    summary = run_results["summary"]
+    rows = run_results["rows"]
+    vt_results = run_results["vt"]
+    urlscan_results = run_results["urlscan"]
+    abuse_results = run_results["abuse"]
+    tf_results = run_results["tf"]
+    mb_results = run_results["mb"]
+    ha_results = run_results.get("ha", {})
+    dnsd_results = run_results.get("dnsd", {})
+    mxtoolbox_results = run_results.get("mxtoolbox", {})
+    whoxy_results = run_results.get("whoxy", {})
+
+    col_sum = st.columns(5)
+    col_sum[0].metric("Total", summary["total"])
+    col_sum[1].metric("Malicious", summary["malicious"])
+    col_sum[2].metric("Suspicious", summary["suspicious"])
+    col_sum[3].metric("Unknown", summary["unknown"])
+    col_sum[4].metric("Benign", summary["benign"])
+
+    if output_format == "Table":
+        if pd:
+            df = pd.DataFrame(rows)
+
+            def _style_verdict(row):
+                verdict = row.get("Verdict", "")
+                if verdict == "Malicious":
+                    return ["background-color: #ffd6d6; color: #111"] * len(row)
+                if verdict == "Suspicious":
+                    return ["background-color: #ffe8c7; color: #111"] * len(row)
+                if verdict == "Benign":
+                    return ["background-color: #dff5e1; color: #111"] * len(row)
+                return ["background-color: #f2f2f2; color: #111"] * len(row)
+
+            st.dataframe(df.style.apply(_style_verdict, axis=1), use_container_width=True)
+        else:
+            st.dataframe(rows, use_container_width=True)
+
+    elif output_format == "JSON":
+        st.json({"summary": summary, "rows": rows})
+
+    elif output_format == "Shareable Text":
+        _st_text = st.session_state.get("share_text", "")
+        if _st_text:
+            _st_b64 = base64.b64encode(_st_text.encode("utf-8")).decode("ascii")
+            st.text_area("", value=_st_text, height=420, key="shareable_text_area", label_visibility="collapsed")
+            _st_html = f"""
+            <style>
+              .copy-wrap{{display:flex;align-items:center;gap:8px;margin-top:4px}}
+              .copy-btn{{padding:5px 12px;border:1px solid #555;border-radius:6px;background:#23272f;color:#f5f7fb;cursor:pointer;font-size:0.9rem}}
+              .copy-msg{{color:#4ade80;font-size:0.82rem}}
+            </style>
+            <div class="copy-wrap">
+              <button class="copy-btn" id="st_copy_btn">Copy Report</button>
+              <span class="copy-msg" id="st_copy_msg"></span>
+            </div>
+            <script>
+              (function(){{
+                var btn=document.getElementById("st_copy_btn");
+                var msg=document.getElementById("st_copy_msg");
+                if(btn){{btn.addEventListener("click",function(){{
+                  navigator.clipboard.writeText(atob("{_st_b64}")).then(function(){{msg.textContent="Copied!"}});
+                }})}}
+              }})();
+            </script>
+            """
+            components.html(_st_html, height=50)
+        else:
+            st.info("Run analysis first to generate shareable text.")
+
+    else:
+        # ── Ticket notes ──────────────────────────────────────────────────────
+        def _vt_line(val: str) -> str:
+            vt = vt_results.get(val, {})
+            stats = vt.get("stats", {})
+            total = sum(stats.values()) if stats else 0
+            mal = stats.get("malicious", 0)
+            if total == 0:
+                return "VirusTotal: No data"
+            return f"VirusTotal: {mal}/{total} malicious"
+
+        def _abuse_line(val: str) -> str:
+            ab = abuse_results.get(val, {})
+            if not ab or ab.get("error") or ab.get("abuseConfidenceScore") is None:
+                return "AbuseIPDB: No data"
+            return (
+                f"AbuseIPDB: Confidence {ab.get('abuseConfidenceScore', 0)}%, "
+                f"{ab.get('totalReports', 0)} reports, "
+                f"last seen {ab.get('lastReportedAt') or 'unknown'}"
+            )
+
+        def _urlscan_line(val: str) -> str:
+            us = urlscan_results.get(val, {})
+            if not us:
+                return "URLScan: No data"
+            verdicts = us.get("verdicts", {}) or {}
+            engines = 0
+            if isinstance(verdicts, dict):
+                for k, v in verdicts.items():
+                    if v is None:
+                        continue
+                    if isinstance(v, dict):
+                        if v.get("malicious") or v.get("suspicious") or v.get("score", 0) > 0:
+                            engines += 1
+                    elif isinstance(v, bool):
+                        if v:
+                            engines += 1
+            if engines == 0:
+                return "URLScan: No data"
+            return f"URLScan: {engines} engine(s) detected"
+
+        def _tf_line(val: str) -> str:
+            tf = tf_results.get(val, {})
+            if not tf:
+                return "ThreatFox: No data"
+            if tf.get("error"):
+                return "ThreatFox: No data"
+            if tf.get("query_status") and tf.get("query_status") != "ok":
+                return "ThreatFox: No data"
+            count = len(tf.get("data", []))
+            return f"ThreatFox: {count} match(es)"
+
+        def _mb_line(val: str) -> str:
+            mb = mb_results.get(val, {})
+            if not mb:
+                return "MalwareBazaar: No data"
+            if mb.get("error"):
+                return "MalwareBazaar: No data"
+            if mb.get("query_status") and mb.get("query_status") != "ok":
+                return "MalwareBazaar: No data"
+            count = len(mb.get("data", []))
+            return f"MalwareBazaar: {count} match(es)"
+
+        def _ha_line(val: str) -> str:
+            ha = ha_results.get(val, {})
+            if not ha:
+                return "Hybrid Analysis: No data"
+            message = str(ha.get("message") or "").strip()
+            if message:
+                return "Hybrid Analysis: No data"
+            verdict = ha.get("verdict") or ""
+            score = ha.get("threat_score") or ""
+            family = ha.get("malware_family") or ""
+            parts = []
+            if verdict:
+                parts.append(f"verdict={verdict}")
+            if score:
+                parts.append(f"threat_score={score}")
+            if family:
+                parts.append(f"family={family}")
+            if not parts:
+                return "Hybrid Analysis: No data"
+            return f"Hybrid Analysis: {', '.join(parts)}"
+
+        def _mx_line(val: str) -> str:
+            mx = mxtoolbox_results.get(val, {})
+            if not mx or mx.get("error"):
+                return "MxToolBox: No data"
+            verdict = mx.get("verdict") or "UNKNOWN"
+            failed = mx.get("total_failed", 0)
+            warnings = mx.get("total_warnings", 0)
+            passed = mx.get("total_passed", 0)
+            return f"MxToolBox: {verdict} — {failed} fail, {warnings} warn, {passed} pass"
+
+        def _whoxy_line(val: str) -> str:
+            wx = whoxy_results.get(val, {})
+            if not wx or wx.get("error"):
+                return "Whoxy: No data"
+            rev = wx.get("reverse_whois") or {}
+            total = rev.get("total_results", 0)
+            if wx.get("mode") == "keyword":
+                if total == 0:
+                    return "Whoxy: No domains found for keyword"
+                return f"Whoxy (keyword): {total} domain(s) found"
+            whois = wx.get("whois") or {}
+            registrar = whois.get("registrar") or ""
+            reg_email = whois.get("registrant_email") or ""
+            created = whois.get("created_date") or ""
+            parts = []
+            if registrar:
+                parts.append(f"registrar={registrar}")
+            if created:
+                parts.append(f"created={created[:10]}")
+            if reg_email:
+                parts.append(f"email={reg_email}")
+            if total:
+                parts.append(f"{total} related domain(s)")
+            if not parts:
+                return "Whoxy: No data"
+            return "Whoxy: " + ", ".join(parts)
+
+        def _dd_line(val: str) -> str:
+            dd = dnsd_results.get(val, {})
+            if not dd or dd.get("error"):
+                return "DNSDumpster: No data"
+            summary_dd = dd.get("soc_summary") or {}
+            a_recs = summary_dd.get("a_records") or []
+            red_flags = summary_dd.get("red_flags") or []
+            ip_count = len(a_recs)
+            flag_str = f", {len(red_flags)} flag(s)" if red_flags else ""
+            if ip_count == 0:
+                return "DNSDumpster: No data"
+            first_ip = a_recs[0].get("ip", "")
+            country = a_recs[0].get("country", "")
+            geo = f" ({country})" if country else ""
+            return f"DNSDumpster: {ip_count} IP(s), e.g. {first_ip}{geo}{flag_str}"
+
+        def _indicator_conclusion(verdict: str) -> str:
+            if verdict == "Malicious":
+                return "Confirmed phishing"
+            if verdict in {"Unknown", "Benign"}:
+                return "No malicious indicator was found"
+            return f"{verdict} indicator"
+
+        pf = run_results.get("provider_flags") or {}
+
+        def _add(notes_list: list, flag_key: str, line: str) -> None:
+            if pf.get(flag_key, True):
+                notes_list.append(line)
+
+        notes = []
+        for row in rows:
+            t = row["Type"]
+            val = row["Artifact"]
+            verdict = row["Verdict"]
+            if t == "ip":
+                notes.append("#IP")
+                notes.append(f"IP: {val}")
+                _add(notes, "abuse",     _abuse_line(val))
+                _add(notes, "vt",        _vt_line(val))
+                _add(notes, "tf",        _tf_line(val))
+                _add(notes, "ha",        _ha_line(val))
+                _add(notes, "mxtoolbox", _mx_line(val))
+                notes.append("Conclusion: " + ("Malicious IP, confirmed suspicious activity" if verdict == "Malicious" else f"{verdict} IP"))
+            elif t == "hash":
+                notes.append("#Hash")
+                notes.append(f"Hash: {val}")
+                _add(notes, "vt", _vt_line(val))
+                _add(notes, "tf", _tf_line(val))
+                _add(notes, "mb", _mb_line(val))
+                _add(notes, "ha", _ha_line(val))
+                notes.append("Conclusion: " + ("Confirmed malware" if verdict == "Malicious" else f"{verdict} file"))
+            elif t == "domain":
+                notes.append("#Domain")
+                notes.append(f"Domain: {val}")
+                _add(notes, "urlscan",   _urlscan_line(val))
+                _add(notes, "vt",        _vt_line(val))
+                _add(notes, "tf",        _tf_line(val))
+                _add(notes, "ha",        _ha_line(val))
+                _add(notes, "dns",       _dd_line(val))
+                _add(notes, "mxtoolbox", _mx_line(val))
+                _add(notes, "whoxy",     _whoxy_line(val))
+                notes.append("Conclusion: " + _indicator_conclusion(verdict))
+            elif t == "url":
+                notes.append("#URL")
+                notes.append(f"URL: {val}")
+                _add(notes, "urlscan",   _urlscan_line(val))
+                _add(notes, "vt",        _vt_line(val))
+                _add(notes, "tf",        _tf_line(val))
+                _add(notes, "ha",        _ha_line(val))
+                _add(notes, "dns",       _dd_line(val))
+                _add(notes, "mxtoolbox", _mx_line(val))
+                _add(notes, "whoxy",     _whoxy_line(val))
+                notes.append("Conclusion: " + _indicator_conclusion(verdict))
+            elif t == "email":
+                notes.append("#Email")
+                notes.append(f"Email: {val}")
+                _add(notes, "vt",        _vt_line(val))
+                _add(notes, "tf",        _tf_line(val))
+                _add(notes, "ha",        _ha_line(val))
+                _add(notes, "mxtoolbox", _mx_line(val))
+                notes.append("Conclusion: " + _indicator_conclusion(verdict))
+            elif t == "whois":
+                notes.append("#Whois Keyword")
+                notes.append(f"Keyword: {val}")
+                _add(notes, "whoxy", _whoxy_line(val))
+                notes.append("Conclusion: " + _indicator_conclusion(verdict))
+            notes.append("")
+        notes_text = "\n".join(notes)
+        st.code(notes_text, language="text")

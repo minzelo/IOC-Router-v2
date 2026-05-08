@@ -1,0 +1,631 @@
+"""IOC Router - Streamlit app entrypoint (refactored)."""
+from __future__ import annotations
+
+import streamlit as st
+import streamlit.components.v1 as components
+
+from config import Settings
+from ioc.parser import IOC, parse_iocs
+from ioc.verdict import summarize_results
+from core.cache import (
+    vt_cached, urlscan_cached, abuse_cached, tf_cached,
+    mb_cached, shodan_cached, dnsd_cached, ha_cached, mxtoolbox_cached,
+    whoxy_cached,
+    CACHE_REV,
+)
+from ui.styles import GLOBAL_CSS_AND_HEADER, LANDING_CSS
+from ui.components.drawer import render_api_drawer
+from ui.components.output_renderer import render_results_output
+from ui.components.ioc_card import render_ioc_cards
+from ui.components.ai_panel import render_ai_panel
+
+st.set_page_config(
+    page_title="IOC Router",
+    page_icon="IOC",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+st.markdown(GLOBAL_CSS_AND_HEADER, unsafe_allow_html=True)
+
+# JavaScript drawer controller — runs in a zero-height iframe so it
+# actually executes (React blocks <script> injected via innerHTML).
+# Uses window.parent to reach the Streamlit app's real document.
+components.html(
+    """
+    <script>
+    (function() {
+        var pw  = window.parent;
+        var pd  = pw.document;
+
+        // Persist state on the parent window object so reruns don't reset it
+        if (pw._drawerInited) return;   // already bootstrapped — skip duplicate runs
+        pw._drawerInited  = true;
+        pw._drawerOpen    = (pw.sessionStorage.getItem('drawerOpen') === '1');
+
+        pw._applyDrawer = function(open) {
+            var sb = pd.querySelector('section[data-testid="stSidebar"]');
+            var bd = pd.getElementById('drawer-backdrop');
+            var burger = pd.getElementById('drawer-burger-btn');
+            if (!sb) return;
+            sb.style.setProperty('transform', open ? 'translateX(0)' : 'translateX(-300px)', 'important');
+            sb.style.setProperty('visibility', 'visible', 'important');
+            if (bd) bd.style.display = open ? 'block' : 'none';
+            if (burger) {
+                if (open) burger.classList.add('open');
+                else burger.classList.remove('open');
+            }
+            pw._drawerOpen = open;
+            pw.sessionStorage.setItem('drawerOpen', open ? '1' : '0');
+        };
+
+        function attachBurger() {
+            var btn = pd.getElementById('drawer-burger-btn');
+            if (btn && !btn._burgerReady) {
+                btn._burgerReady = true;
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    pw._applyDrawer(!pw._drawerOpen);
+                });
+            }
+        }
+
+        function attachBackdrop() {
+            var bd = pd.getElementById('drawer-backdrop');
+            if (bd && !bd._backdropReady) {
+                bd._backdropReady = true;
+                bd.addEventListener('click', function() {
+                    pw._applyDrawer(false);
+                });
+            }
+        }
+
+        function init(tries) {
+            var sb = pd.querySelector('section[data-testid="stSidebar"]');
+            if (sb) {
+                pw._applyDrawer(pw._drawerOpen);
+                attachBurger();
+                attachBackdrop();
+            } else if (tries < 50) {
+                setTimeout(function() { init(tries + 1); }, 100);
+            }
+        }
+        init(0);
+
+        // Re-attach after every Streamlit DOM update
+        var _t = null;
+        new MutationObserver(function() {
+            clearTimeout(_t);
+            _t = setTimeout(function() {
+                attachBurger();
+                attachBackdrop();
+                var sb = pd.querySelector('section[data-testid="stSidebar"]');
+                if (sb) {
+                    var want = pw._drawerOpen ? 'translateX(0px)' : 'translateX(-300px)';
+                    if (sb.style.transform !== want) pw._applyDrawer(pw._drawerOpen);
+                }
+                pd.querySelectorAll('section[data-testid="stSidebar"] input[type="password"]')
+                  .forEach(function(el) {
+                    if (!el._noCopy) {
+                        el._noCopy = true;
+                        el.addEventListener('copy', function(e) { e.preventDefault(); });
+                        el.addEventListener('cut',  function(e) { e.preventDefault(); });
+                    }
+                });
+            }, 200);
+        }).observe(pd.body, { childList: true, subtree: true });
+    })();
+    </script>
+    """,
+    height=0,
+)
+
+settings = Settings.from_env()
+
+# ── API-key drawer: session state init ───────────────────────────────────────
+for _k in ["sk_gemini", "sk_grok", "sk_vt", "sk_urlscan", "sk_abuse",
+           "sk_threatfox", "sk_mb", "sk_shodan", "sk_dnsd", "sk_ha", "sk_mxtoolbox", "sk_whoxy"]:
+    if _k not in st.session_state:
+        st.session_state[_k] = ""
+
+
+def _sk(key: str) -> str | None:
+    """Return a non-empty stripped session-state API key, or None."""
+    v = str(st.session_state.get(key) or "").strip()
+    return v if v else None
+
+
+# Session-state keys override .env values when non-empty
+settings.vt_key = _sk("sk_vt") or settings.vt_key
+settings.urlscan_key = _sk("sk_urlscan") or settings.urlscan_key
+settings.abuse_key = _sk("sk_abuse") or settings.abuse_key
+settings.threatfox_key = _sk("sk_threatfox") or settings.threatfox_key
+settings.malwarebazaar_key = _sk("sk_mb") or settings.malwarebazaar_key
+settings.shodan_key = _sk("sk_shodan") or settings.shodan_key
+settings.dnsdumpster_key = _sk("sk_dnsd") or settings.dnsdumpster_key
+settings.hybrid_analysis_key = _sk("sk_ha") or settings.hybrid_analysis_key
+settings.mxtoolbox_key = _sk("sk_mxtoolbox") or settings.mxtoolbox_key
+settings.whoxy_key = _sk("sk_whoxy") or settings.whoxy_key
+settings.gemini_key = _sk("sk_gemini") or settings.gemini_key
+settings.groq_key = _sk("sk_grok") or settings.groq_key
+
+if "run_results" not in st.session_state:
+    st.session_state["run_results"] = None
+if "auto_generate_ai" not in st.session_state:
+    st.session_state["auto_generate_ai"] = False
+
+
+def _clear_ai_outputs() -> None:
+    """Clear all AI-generated session state outputs."""
+    st.session_state["ai_short"] = ""
+    st.session_state["ai_desc"] = ""
+    st.session_state["ai_threat_analysis"] = ""
+    st.session_state["ai_ioc_links"] = ""
+
+
+def _clear_all_outputs() -> None:
+    """Clear all run results and AI outputs from session state."""
+    st.session_state["run_results"] = None
+    _clear_ai_outputs()
+
+
+render_api_drawer()
+
+if not settings.vt_key:
+    st.warning("VirusTotal API key belum di-set. Set env var: VT_KEY")
+
+# ── Pre-compute layout mode ───────────────────────────────────────────────────
+_has_results = bool(st.session_state["run_results"])
+_was_landing = not _has_results  # True when Run is first clicked from chat UI
+
+# ── Variable defaults (overridden by widgets below) ───────────────────────────
+output_format: str = st.session_state.get("output_format", "Ticket notes")
+auto_generate_on_run: bool = st.session_state.get("auto_generate_on_run", False)
+auto_choose_provider: bool = st.session_state.get("auto_choose_provider", True)
+critical_asset: bool = st.session_state.get("critical_asset", False)
+auto_detect: bool = st.session_state.get("auto_detect", True)
+allow_urlscan_submit: bool = True
+run: bool = False
+clear: bool = False
+load_sample: bool = False
+raw: str = st.session_state.get("ioc_input", "")
+raw_log: str = st.session_state.get("raw_log", "")
+alert_name: str = st.session_state.get("alert_name", "")
+host: str = st.session_state.get("host", "")
+host_ip: str = st.session_state.get("host_ip", "")
+time_detected: str = st.session_state.get("time_detected", "")
+device_action: str = st.session_state.get("device_action", "")
+parent_process: str = st.session_state.get("parent_process", "")
+child_process: str = st.session_state.get("child_process", "")
+
+# ── Handle pending resets before rendering ────────────────────────────────────
+if st.session_state.get("reset_input"):
+    st.session_state["ioc_input"] = ""
+    st.session_state["raw_log"] = ""
+    st.session_state["device_action"] = ""
+    st.session_state["parent_process"] = ""
+    st.session_state["child_process"] = ""
+    st.session_state["reset_input"] = False
+    raw = ""
+    raw_log = ""
+    device_action = ""
+    parent_process = ""
+    child_process = ""
+
+if st.session_state.get("load_sample"):
+    st.session_state["ioc_input"] = "8.8.8.8\nexample.com\nhttps://example.com/login\n44d88612fea8a8f36de82e1278abb02f"
+    st.session_state["load_sample"] = False
+    raw = st.session_state["ioc_input"]
+
+if not _has_results:
+    # ── LANDING: Centered chat-style input ────────────────────────────────────
+    st.markdown(LANDING_CSS, unsafe_allow_html=True)
+
+    _, _center, _ = st.columns([1, 3, 1])
+    with _center:
+        # Hint pills
+        st.markdown('<div class="ioc-hint-row">', unsafe_allow_html=True)
+        _hp = st.columns(5)
+        _hints = [
+            ("IP Address", "8.8.8.8"),
+            ("Domain", "evil.example.com"),
+            ("URL", "https://phish.example.com/login"),
+            ("MD5 Hash", "44d88612fea8a8f36de82e1278abb02f"),
+            ("Email", "user@suspicious.io"),
+        ]
+        for _i, (_label, _val) in enumerate(_hints):
+            with _hp[_i]:
+                if st.button(_label, key=f"hint_{_i}", use_container_width=True):
+                    _cur = st.session_state.get("ioc_input", "")
+                    st.session_state["ioc_input"] = (_cur + "\n" + _val).strip() if _cur else _val
+                    st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:6px'/>", unsafe_allow_html=True)
+
+        # Chat card
+        with st.container(border=True):
+            raw = st.text_area(
+                "IOC",
+                placeholder="Enter IOCs — IP, domain, URL, hash, or email (one per line)...",
+                height=110,
+                key="ioc_input",
+                label_visibility="collapsed",
+            )
+            # Toolbar row inside card
+            _tc1, _tc2, _tc3, _tc4, _tc_badge, _tc_run = st.columns([1.1, 0.9, 0.85, 1.3, 1.1, 0.55])
+            with _tc1:
+                auto_detect = st.checkbox("Auto-detect", value=True, key="auto_detect")
+            with _tc2:
+                auto_generate_on_run = st.checkbox("Auto AI", value=False, key="auto_generate_on_run")
+            with _tc3:
+                critical_asset = st.checkbox("Critical", value=False, key="critical_asset")
+            with _tc4:
+                auto_choose_provider = st.checkbox("Auto Provider", value=True, key="auto_choose_provider")
+            with _tc_badge:
+                _prov = st.session_state.get("auto_ai_provider", "Gemini")
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:6px;margin-top:14px;'
+                    f'font-family:\'JetBrains Mono\',monospace;font-size:0.72rem;color:#6b7280;">'
+                    f'<span style="width:7px;height:7px;background:#4ade80;border-radius:50%;'
+                    f'box-shadow:0 0 6px #4ade80;flex-shrink:0;display:inline-block;"></span>'
+                    f'{_prov}</div>',
+                    unsafe_allow_html=True,
+                )
+            with _tc_run:
+                run = st.button("▶", type="primary", key="run_btn_chat", use_container_width=True)
+
+        # IOC Types section — shown when Auto-detect is off
+        if not st.session_state.get("auto_detect", True):
+            with st.expander("IOC Types", expanded=True):
+                _it1, _it2 = st.columns(2)
+                with _it1:
+                    st.checkbox("IP", value=True, key="ioc_type_ip")
+                    st.checkbox("Hash", value=True, key="ioc_type_hash")
+                with _it2:
+                    st.checkbox("Domain / URL", value=True, key="ioc_type_domain")
+                    st.checkbox("Email", value=True, key="ioc_type_email")
+                    st.checkbox("Whois Keyword", value=True, key="ioc_type_whois")
+
+        # Providers section — shown between card and Options when Auto Provider is off
+        if not st.session_state.get("auto_choose_provider", True):
+            with st.expander("Providers", expanded=True):
+                _pv1, _pv2 = st.columns(2)
+                with _pv1:
+                    st.checkbox("VirusTotal", value=True, key="provider_vt")
+                    st.checkbox("AbuseIPDB", value=True, key="provider_abuse")
+                    st.checkbox("ThreatFox", value=True, key="provider_tf")
+                    st.checkbox("MalwareBazaar", value=True, key="provider_mb")
+                    st.checkbox("MxToolBox", value=True, key="provider_mxtoolbox")
+                with _pv2:
+                    st.checkbox("urlscan", value=True, key="provider_urlscan")
+                    st.checkbox("Shodan", value=True, key="provider_shodan")
+                    st.checkbox("DNSDumpster", value=True, key="provider_dns")
+                    st.checkbox("Hybrid Analysis", value=True, key="provider_ha")
+                    st.checkbox("Whoxy", value=True, key="provider_whoxy")
+
+        # Options expander
+        with st.expander("⚙️ Options"):
+            _sel = st.columns(2)
+            with _sel[0]:
+                st.selectbox("AI Provider", ["Gemini", "Groq"], index=0, key="auto_ai_provider")
+            with _sel[1]:
+                output_format = st.selectbox(
+                    "Output format", ["Ticket notes", "Table", "JSON", "Shareable Text"], index=0, key="output_format"
+                )
+
+            _opt = st.columns(2)
+            with _opt[0]:
+                alert_name = st.text_input(
+                    "Alert Name", placeholder="e.g. Suspicious Outbound", key="alert_name"
+                )
+                host_ip = st.text_input("Host IP", placeholder="192.168.x.x", key="host_ip")
+            with _opt[1]:
+                host = st.text_input("Host", placeholder="hostname", key="host")
+                time_detected = st.text_input(
+                    "Time Detected", placeholder="2025-01-01 08:00:00", key="time_detected"
+                )
+
+            _proc = st.columns(3)
+            with _proc[0]:
+                device_action = st.selectbox(
+                    "Device Action",
+                    ["None", "Blocked", "Isolated", "Prevented", "Allowed", "Detected"],
+                    key="device_action",
+                )
+            with _proc[1]:
+                parent_process = st.text_input(
+                    "Parent Process", placeholder="e.g. explorer.exe", key="parent_process"
+                )
+            with _proc[2]:
+                child_process = st.text_input(
+                    "Child Process", placeholder="e.g. cmd.exe", key="child_process"
+                )
+
+            raw_log = st.text_area(
+                "Context (optional)",
+                placeholder="Paste raw log or describe context here for additional AI context...",
+                height=80,
+                key="raw_log",
+            )
+
+            _act = st.columns(2)
+            with _act[0]:
+                clear = st.button("🗑️ Clear", use_container_width=True, key="clear_landing")
+            with _act[1]:
+                load_sample = st.button(
+                    "📋 Load Sample IOCs", use_container_width=True, key="load_sample_landing"
+                )
+
+        st.markdown(
+            '<p style="text-align:center;font-family:\'JetBrains Mono\',monospace;'
+            'font-size:0.72rem;color:#6b7280;margin-top:10px;line-height:1.8;">'
+            'Enter one or more IOCs above, then press '
+            '<strong style="color:#e2e6f0;">▶ Run</strong> to start the analysis.'
+            "</p>",
+            unsafe_allow_html=True,
+        )
+
+    split_right = st.container()
+    split_left = st.container()
+
+else:
+    # ── SPLIT LAYOUT: Input left + Results right ──────────────────────────────
+    components.html(
+        """
+        <script>
+        (function() {
+            function tagMainSplit() {
+                var blocks = window.parent.document.querySelectorAll('[data-testid="stHorizontalBlock"]');
+                if (blocks.length > 0) {
+                    blocks[0].classList.add('ioc-main-split');
+                }
+            }
+            if (document.readyState === 'complete') { tagMainSplit(); }
+            else { window.addEventListener('load', tagMainSplit); }
+            setTimeout(tagMainSplit, 300);
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+    split_left, split_right = st.columns([1, 1], gap="small")
+
+    with split_left:
+        st.subheader("Input")
+        raw = st.text_area(
+            "IOC",
+            placeholder="8.8.8.8\nexample.com\nhttps://evil.com/login\n<hash>",
+            height=160,
+            key="ioc_input",
+        )
+        raw_log = st.text_area(
+            "Context (optional)",
+            placeholder="Paste raw log or describe context here for additional AI description context",
+            height=120,
+            key="raw_log",
+        )
+        alert_name = st.text_input("Alert Name (optional)", key="alert_name")
+        host = st.text_input("Host (optional)", key="host")
+        host_ip = st.text_input("Host IP (optional)", key="host_ip")
+        time_detected = st.text_input("Time Detected (optional)", key="time_detected")
+
+        _sp_proc = st.columns(3)
+        with _sp_proc[0]:
+            device_action = st.selectbox(
+                "Device Action",
+                ["None", "Blocked", "Isolated", "Prevented", "Allowed", "Detected"],
+                key="device_action",
+            )
+        with _sp_proc[1]:
+            parent_process = st.text_input(
+                "Parent Process", placeholder="e.g. explorer.exe", key="parent_process"
+            )
+        with _sp_proc[2]:
+            child_process = st.text_input(
+                "Child Process", placeholder="e.g. cmd.exe", key="child_process"
+            )
+
+        col_chk = st.columns(4)
+        with col_chk[0]:
+            auto_detect = st.checkbox("Auto-detect type", value=True, key="auto_detect")
+        with col_chk[1]:
+            auto_generate_on_run = st.checkbox(
+                "Auto Generate AI Output", value=False, key="auto_generate_on_run"
+            )
+        with col_chk[2]:
+            auto_choose_provider = st.checkbox(
+                "Auto-choose Provider", value=True, key="auto_choose_provider"
+            )
+        with col_chk[3]:
+            critical_asset = st.checkbox("Critical Asset", value=False, key="critical_asset")
+
+        if auto_generate_on_run:
+            col_drop = st.columns([1, 1, 3])
+            with col_drop[0]:
+                st.selectbox("AI Provider", ["Gemini", "Groq"], index=0, key="auto_ai_provider")
+            with col_drop[1]:
+                output_format = st.selectbox(
+                    "Output format", ["Ticket notes", "Table", "JSON", "Shareable Text"], index=0, key="output_format"
+                )
+        else:
+            col_drop = st.columns([1, 4])
+            with col_drop[0]:
+                output_format = st.selectbox(
+                    "Output format", ["Ticket notes", "Table", "JSON", "Shareable Text"], index=0, key="output_format"
+                )
+
+        if not auto_detect:
+            with st.expander("IOC Types", expanded=False):
+                _sit1, _sit2 = st.columns(2)
+                with _sit1:
+                    st.checkbox("IP", value=True, key="ioc_type_ip")
+                    st.checkbox("Hash", value=True, key="ioc_type_hash")
+                with _sit2:
+                    st.checkbox("Domain / URL", value=True, key="ioc_type_domain")
+                    st.checkbox("Email", value=True, key="ioc_type_email")
+                    st.checkbox("Whois Keyword", value=True, key="ioc_type_whois")
+
+        if not auto_choose_provider:
+            with st.expander("Providers", expanded=False):
+                _sp1, _sp2 = st.columns(2)
+                with _sp1:
+                    st.checkbox("VirusTotal", value=True, key="provider_vt")
+                    st.checkbox("AbuseIPDB", value=True, key="provider_abuse")
+                    st.checkbox("ThreatFox", value=True, key="provider_tf")
+                    st.checkbox("MalwareBazaar", value=True, key="provider_mb")
+                    st.checkbox("MxToolBox", value=True, key="provider_mxtoolbox")
+                with _sp2:
+                    st.checkbox("urlscan", value=True, key="provider_urlscan")
+                    st.checkbox("Shodan", value=True, key="provider_shodan")
+                    st.checkbox("DNSDumpster", value=True, key="provider_dns")
+                    st.checkbox("Hybrid Analysis", value=True, key="provider_ha")
+                    st.checkbox("Whoxy", value=True, key="provider_whoxy")
+
+        col_btn = st.columns([1.6, 0.8, 1.8, 2.8], gap="small")
+        with col_btn[0]:
+            run = st.button("Run Enrichment", type="primary", key="run_btn_split")
+        with col_btn[1]:
+            clear = st.button("Clear", key="clear_split")
+        with col_btn[2]:
+            load_sample = st.button("Load sample IOCs", key="load_sample_split")
+
+# ── IOC change detection ──────────────────────────────────────────────────────
+_allowed_ioc_types: set[str] | None = None
+if not auto_detect:
+    _allowed_ioc_types = set()
+    if st.session_state.get("ioc_type_ip", True):
+        _allowed_ioc_types.add("ip")
+    if st.session_state.get("ioc_type_domain", True):
+        _allowed_ioc_types.update({"domain", "url"})
+    if st.session_state.get("ioc_type_hash", True):
+        _allowed_ioc_types.add("hash")
+    if st.session_state.get("ioc_type_email", True):
+        _allowed_ioc_types.add("email")
+    if st.session_state.get("ioc_type_whois", True):
+        _allowed_ioc_types.add("whois")
+parsed_input_items = parse_iocs(raw, auto_detect=auto_detect, allowed_types=_allowed_ioc_types) if raw.strip() else []
+current_ioc_signature = tuple((ioc.value, ioc.type) for ioc in parsed_input_items)
+previous_ioc_signature = st.session_state.get("ioc_signature_last")
+ioc_changed = previous_ioc_signature is not None and previous_ioc_signature != current_ioc_signature
+if ioc_changed:
+    _clear_all_outputs()
+st.session_state["ioc_signature_last"] = current_ioc_signature
+
+# ── Action handlers ───────────────────────────────────────────────────────────
+if clear:
+    _clear_all_outputs()
+    st.session_state["reset_input"] = True
+    st.rerun()
+
+if load_sample:
+    st.session_state["load_sample"] = True
+    st.rerun()
+
+auto_run_enrichment = bool(st.session_state.get("auto_run_enrichment"))
+if auto_run_enrichment:
+    st.session_state["auto_run_enrichment"] = False
+
+run_requested = run or auto_run_enrichment
+
+if run_requested:
+    st.session_state["auto_generate_ai"] = bool(auto_generate_on_run)
+    if auto_generate_on_run:
+        auto_ai_provider = "Groq" if st.session_state.get("auto_ai_provider") == "Grok" else "Gemini"
+        st.session_state["ai_provider"] = auto_ai_provider
+
+
+def _auto_provider_flags(items: list[IOC], settings_obj: Settings) -> dict[str, bool]:
+    types = {ioc.type for ioc in items}
+    return {
+        "vt":        bool(settings_obj.vt_key)               and bool(types & {"ip", "domain", "url", "hash"}),
+        "urlscan":   bool(settings_obj.urlscan_key)           and bool(types & {"domain", "url"}),
+        "abuse":     bool(settings_obj.abuse_key)             and bool(types & {"ip", "domain", "url"}),
+        "tf":        bool(settings_obj.threatfox_key)         and bool(types & {"ip", "domain", "url", "hash"}),
+        "mb":        bool(settings_obj.malwarebazaar_key)     and "hash" in types,
+        "shodan":    bool(settings_obj.shodan_key)            and bool(types & {"ip", "domain", "url"}),
+        "dns":       bool(settings_obj.dnsdumpster_key)       and bool(types & {"domain", "url"}),
+        "ha":        bool(settings_obj.hybrid_analysis_key)   and bool(types & {"ip", "domain", "url", "hash"}),
+        "mxtoolbox": bool(settings_obj.mxtoolbox_key)         and bool(types & {"ip", "domain", "url", "email"}),
+        "whoxy":     bool(settings_obj.whoxy_key)             and bool(types & {"domain", "url", "whois"}),
+    }
+
+
+# ── Right panel / Results ─────────────────────────────────────────────────────
+with split_right:
+    if not _was_landing:
+        st.subheader("Results")
+    if run_requested and raw.strip():
+        items = parsed_input_items
+        if not items:
+            st.info("Tidak ada IOC valid setelah parsing.")
+        else:
+            ioc_payload = [(i.value, i.type) for i in items]
+            provider_flags = (
+                _auto_provider_flags(items, settings)
+                if auto_choose_provider
+                else {
+                    "vt":        bool(st.session_state.get("provider_vt")),
+                    "urlscan":   bool(st.session_state.get("provider_urlscan")),
+                    "abuse":     bool(st.session_state.get("provider_abuse")),
+                    "tf":        bool(st.session_state.get("provider_tf")),
+                    "mb":        bool(st.session_state.get("provider_mb")),
+                    "shodan":    bool(st.session_state.get("provider_shodan")),
+                    "dns":       bool(st.session_state.get("provider_dns")),
+                    "ha":        bool(st.session_state.get("provider_ha")),
+                    "mxtoolbox": bool(st.session_state.get("provider_mxtoolbox")),
+                    "whoxy":     bool(st.session_state.get("provider_whoxy")),
+                }
+            )
+
+            vt_results = vt_cached(ioc_payload, settings.vt_key) if provider_flags["vt"] else {}
+            urlscan_results = (
+                urlscan_cached(ioc_payload, settings.urlscan_key, allow_urlscan_submit)
+                if provider_flags["urlscan"]
+                else {}
+            )
+            abuse_results = abuse_cached(ioc_payload, settings.abuse_key, CACHE_REV) if provider_flags["abuse"] else {}
+            tf_results = tf_cached(ioc_payload, settings.threatfox_key, CACHE_REV) if provider_flags["tf"] else {}
+            mb_results = mb_cached(ioc_payload, settings.malwarebazaar_key, CACHE_REV) if provider_flags["mb"] else {}
+            shodan_results = shodan_cached(ioc_payload, settings.shodan_key, CACHE_REV) if provider_flags["shodan"] else {}
+            dnsd_results = dnsd_cached(ioc_payload, settings.dnsdumpster_key, CACHE_REV) if provider_flags["dns"] else {}
+            ha_results = ha_cached(ioc_payload, settings.hybrid_analysis_key, CACHE_REV) if provider_flags["ha"] else {}
+            mxtoolbox_results = mxtoolbox_cached(ioc_payload, settings.mxtoolbox_key, CACHE_REV) if provider_flags.get("mxtoolbox") else {}
+            whoxy_results = whoxy_cached(ioc_payload, settings.whoxy_key, CACHE_REV) if provider_flags.get("whoxy") else {}
+            summary, rows = summarize_results(
+                items,
+                vt_results,
+                urlscan_results,
+                abuse_results,
+                tf_results,
+                mb_results,
+            )
+            st.session_state["run_results"] = {
+                "items": items,
+                "summary": summary,
+                "rows": rows,
+                "vt": vt_results,
+                "urlscan": urlscan_results,
+                "abuse": abuse_results,
+                "tf": tf_results,
+                "mb": mb_results,
+                "shodan": shodan_results,
+                "dnsd": dnsd_results,
+                "ha": ha_results,
+                "mxtoolbox": mxtoolbox_results,
+                "whoxy": whoxy_results,
+                "provider_flags": provider_flags,
+            }
+            if _was_landing:
+                st.rerun()
+
+    if st.session_state["run_results"]:
+        render_results_output(output_format, st.session_state["run_results"])
+        render_ioc_cards(st.session_state["run_results"])
+    elif run_requested and not _was_landing:
+        st.info("Please enter at least one IOC first.")
+
+with split_left:
+    if st.session_state.get("run_results"):
+        render_ai_panel(st.session_state["run_results"], settings)
