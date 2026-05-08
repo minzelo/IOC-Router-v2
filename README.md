@@ -18,9 +18,11 @@ Access from: https://ioc-router-v2.streamlit.app
 
 Queries up to 10 threat intelligence providers simultaneously — VirusTotal, URLScan, AbuseIPDB, Shodan, ThreatFox, MalwareBazaar, DNSDumpster, Hybrid Analysis, MxToolBox, and Whoxy. Each provider can be toggled individually, and results are displayed in a per-provider tabbed view showing detection scores, reputation data, and raw details from each source.
 
-![Provider selection panel](image/Providers.jpeg)
-
-![Per-provider tabbed result view](image/multiple%20provider%20output.jpeg)
+<p align="center">
+  <img src="image/Providers.jpeg" width="40%">
+  &nbsp;&nbsp;
+  <img src="image/multiple provider output.jpeg" width="40%">
+</p>
 
 ---
 
@@ -28,9 +30,13 @@ Queries up to 10 threat intelligence providers simultaneously — VirusTotal, UR
 
 Automatically identifies and routes each indicator to the relevant providers — supports IPv4/IPv6, domain, URL, file hash (MD5/SHA1/SHA256), email, and WHOIS keywords. When **Auto-detect** and **Auto Provider** are enabled, mixed IOC types can be submitted together in one batch and the system handles classification and routing without manual configuration.
 
-![Multiple IOC types with Auto-detect and Auto Provider enabled](image/Multiple%20diffrent%20IOC%20with%20Auto%20IOC%20detector%20and%20Auto%20Provider%20choose.jpeg)
+<p align="center">
+  <img src="image/Multiple diffrent IOC with Auto IOC detector and Auto Provider choose.jpeg" width="55%">
+</p>
 
-![Result cards labeled by detected IOC type](image/multiple%20IOC%20results.jpeg)
+<p align="center">
+  <img src="image/multiple IOC results.jpeg" width="55%">
+</p>
 
 ---
 
@@ -38,7 +44,9 @@ Automatically identifies and routes each indicator to the relevant providers —
 
 Extracts 100+ granular threat flags from provider responses, each labeled with a severity level (CRITICAL, HIGH, MEDIUM, LOW) and mapped to MITRE ATT&CK technique IDs. Flags are grouped by severity in collapsible sections, making it easy to triage the most critical indicators first.
 
-![Threat Indicators grouped by severity with MITRE mappings](image/Threat%20Analysis%202.jpeg)
+<p align="center">
+  <img src="image/Threat Analysis 2.jpeg" width="60%">
+</p>
 
 ---
 
@@ -46,19 +54,27 @@ Extracts 100+ granular threat flags from provider responses, each labeled with a
 
 Produces a final verdict per IOC — **Malicious**, **Suspicious**, **Unknown**, or **Benign** — based on consensus across all queried providers. The ticket notes output includes a session-level summary (total IOCs, count per verdict) followed by a per-IOC breakdown listing each provider's finding and a plain-language conclusion.
 
-![Ticket notes output with verdict summary and per-IOC conclusions](image/Ticket%20note%20ready%20output.jpeg)
+<p align="center">
+  <img src="image/Ticket note ready output.jpeg" width="60%">
+</p>
 
 ---
 
 ### 5. Threat State & Level
 
-Determines the threat lifecycle state (e.g. Reconnaissance, Persistence, Impact) and assigns a threat level (Low → Very High), adjusted for asset criticality when the **Critical** flag is set. Also surfaces a human-readable risk label, a list of reasons driving the assessment, and all relevant MITRE ATT&CK tactics observed across providers.
+Determines the threat lifecycle state (e.g. Reconnaissance, Persistence, Impact) and assigns a threat level (Low → Very High), adjusted for asset criticality when the **Critical** flag is set. Also surfaces a human-readable risk label, a list of reasons driving the assessment, all relevant MITRE ATT&CK tactics observed across providers, key evidence per IOC (malware family, domain age, open ports, first seen), and direct source links back to each provider's result page.
 
-![Threat Analysis panel showing state, level, risk label, reasons, and MITRE tactics](image/Threat%20Analysis%201.jpeg)
+<p align="center">
+  <img src="image/Threat Analysis 1.jpeg" width="42%">
+  &nbsp;&nbsp;
+  <img src="image/Threat Analysis 2.jpeg" width="42%">
+</p>
 
-![Key Evidence panel with per-IOC metadata — malware family, domain age, open ports, first seen](image/Threat%20Analysis%203.jpeg)
-
-![Source Links panel with direct links to each provider's result page per IOC](image/Threat%20Analysis%204.jpeg)
+<p align="center">
+  <img src="image/Threat Analysis 3.jpeg" width="42%">
+  &nbsp;&nbsp;
+  <img src="image/Threat Analysis 4.jpeg" width="42%">
+</p>
 
 ---
 
@@ -72,9 +88,11 @@ Resolves IP addresses to country, city, ISP, and ASN, and plots them on an inter
 
 Auto-generates a human-readable incident narrative using Google Gemini or Groq, grounded in the extracted flags, raw provider logs, and analyst-supplied context (alert name, host, host IP, detection time, device action, parent/child process, and free-text context). The AI provider and model can be selected via the Options panel before running the analysis.
 
-![Options panel showing AI provider selection and context fields](image/Options.jpeg)
-
-![AI-generated incident description narrative](image/AI%20Description%20result.jpeg)
+<p align="center">
+  <img src="image/Options.jpeg" width="40%">
+  &nbsp;&nbsp;
+  <img src="image/AI Description result.jpeg" width="40%">
+</p>
 
 ---
 
@@ -82,7 +100,9 @@ Auto-generates a human-readable incident narrative using Google Gemini or Groq, 
 
 Results can be exported in four formats selectable from the Options panel — **Ticket Notes** (structured plain text per IOC, paste-ready for SIEM tickets), **Table** (tabular view with verdict, confidence, evidence, and sources), **JSON** (raw structured output for downstream processing), and **Shareable Text** (Base64-encoded summary, copy-to-clipboard ready).
 
-![Homepage showing the main input interface and output options](image/Homepage.jpeg)
+<p align="center">
+  <img src="image/Homepage.jpeg" width="80%">
+</p>
 
 ---
 
@@ -217,6 +237,20 @@ ioc-router/
 │   ├── whoxy.md
 │   ├── gemini.md
 │   └── grok.md
+│
+├── image/                        # Screenshots for README documentation
+│   ├── Homepage.jpeg
+│   ├── Providers.jpeg
+│   ├── Options.jpeg
+│   ├── Ticket note ready output.jpeg
+│   ├── AI Description result.jpeg
+│   ├── Threat Analysis 1.jpeg
+│   ├── Threat Analysis 2.jpeg
+│   ├── Threat Analysis 3.jpeg
+│   ├── Threat Analysis 4.jpeg
+│   ├── Multiple diffrent IOC with Auto IOC detector and Auto Provider choose.jpeg
+│   ├── multiple IOC results.jpeg
+│   └── multiple provider output.jpeg
 │
 └── tests/
     ├── test_abuseipdb_processing.py
