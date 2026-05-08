@@ -18,6 +18,7 @@ from ui.components.drawer import render_api_drawer
 from ui.components.output_renderer import render_results_output
 from ui.components.ioc_card import render_ioc_cards
 from ui.components.ai_panel import render_ai_panel
+from ui.components.cve_panel import render_cve_panel
 
 st.set_page_config(
     page_title="IOC Router",
@@ -218,11 +219,35 @@ if st.session_state.get("load_sample"):
     raw = st.session_state["ioc_input"]
 
 if not _has_results:
-    # ── LANDING: Centered chat-style input ────────────────────────────────────
+    # ── LANDING: Note left | Input center | CVE right ─────────────────────────
     st.markdown(LANDING_CSS, unsafe_allow_html=True)
 
-    _, _center, _ = st.columns([1, 3, 1])
-    with _center:
+    _note_col, _center_col, _right_col = st.columns([1, 1.6, 1], gap="large")
+
+    with _note_col:
+        st.markdown(
+            '<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.88rem;'
+            'font-weight:700;color:#f5f7fb;letter-spacing:0.01em;margin-bottom:10px;">Note</div>',
+            unsafe_allow_html=True,
+        )
+        _notes = [
+            "AI Description Feature & MxToolBox Description require own API key",
+            "To refresh output do a hard refresh",
+            "Project is still Under development",
+        ]
+        _note_items = "".join(
+            f'<li style="margin-bottom:10px;line-height:1.5;">{n}</li>'
+            for n in _notes
+        )
+        st.markdown(
+            f'<ul style="font-family:\'JetBrains Mono\',monospace;font-size:0.72rem;'
+            f'color:#9ca3af;padding-left:1.1rem;margin:0;list-style-type:disc;">'
+            f'{_note_items}'
+            f'</ul>',
+            unsafe_allow_html=True,
+        )
+
+    with _center_col:
         # Hint pills
         st.markdown('<div class="ioc-hint-row">', unsafe_allow_html=True)
         _hp = st.columns(5)
@@ -366,8 +391,11 @@ if not _has_results:
             unsafe_allow_html=True,
         )
 
-    split_right = st.container()
-    split_left = st.container()
+    with _right_col:
+        render_cve_panel()
+
+    split_right = _right_col
+    split_left = _center_col
 
 else:
     # ── SPLIT LAYOUT: Input left + Results right ──────────────────────────────

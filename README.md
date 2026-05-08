@@ -141,8 +141,23 @@ ioc-router/
 │       ├── drawer.py             # API key drawer sidebar
 │       ├── ioc_card.py           # Per-IOC result card
 │       ├── ai_panel.py           # AI ticket generation panel
+│       ├── cve_panel.py          # CVE details panel
 │       ├── map.py                # Interactive OSM map builder
 │       └── output_renderer.py    # Notes / Table / JSON / Shareable output
+│
+├── docs/                         # Provider integration documentation
+│   ├── virustotal.md
+│   ├── urlscan.md
+│   ├── abuseipdb.md
+│   ├── shodan.md
+│   ├── threatfox.md
+│   ├── malwarebazaar.md
+│   ├── hybrid_analysis.md
+│   ├── dnsdumpster.md
+│   ├── mxtoolbox.md
+│   ├── whoxy.md
+│   ├── gemini.md
+│   └── grok.md
 │
 └── tests/
     ├── test_abuseipdb_processing.py

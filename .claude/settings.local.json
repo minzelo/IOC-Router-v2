@@ -39,7 +39,9 @@
       "Bash(powershell -Command \"cd 'c:\\\\Users\\\\rahma\\\\Documents\\\\Raihan\\\\Jobs\\\\Compnet\\\\Personal Project'; Start-Process python -ArgumentList '-m streamlit run app.py' -PassThru | Select-Object Id,ProcessName\")",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\rahma\\\\Documents\\\\Raihan\\\\Jobs\\\\Compnet\\\\IOC router v2\" -Recurse -Force)",
       "Bash(Select-Object FullName, PSIsContainer)",
-      "Bash(Sort-Object FullName)"
+      "Bash(Sort-Object FullName)",
+      "WebFetch(domain:nvd.nist.gov)",
+      "WebSearch"
     ]
   }
 }
