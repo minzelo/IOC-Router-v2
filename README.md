@@ -14,16 +14,75 @@ Access from: https://ioc-router-v2.streamlit.app
 
 ## Features
 
-| # | Feature | Description |
-|:-:|---------|-------------|
-| 1 | **Multi-source Enrichment** | Queries up to 10 providers simultaneously — VirusTotal, URLScan, AbuseIPDB, Shodan, ThreatFox, MalwareBazaar, DNSDumpster, Hybrid Analysis, MxToolBox, Whoxy |
-| 2 | **IOC Type Auto-detection** | Automatically identifies IPv4/IPv6, domain, URL, file hash (MD5/SHA1/SHA256), email, and WHOIS keywords |
-| 3 | **Threat Flag Extraction** | Extracts 100+ granular threat flags with severity levels (CRITICAL → INFO) and MITRE ATT&CK IDs |
-| 4 | **Verdict Aggregation** | Produces a final verdict (Malicious / Suspicious / Unknown / Benign) with confidence scoring based on provider consensus |
-| 5 | **Threat State & Level** | Determines threat lifecycle state (Exposure → Impact) and assigns a threat level (Low → Very High), adjusted for asset criticality |
-| 6 | **Geolocation & Mapping** | Resolves IPs to country, city, ISP, and ASN — displayed on an interactive map |
-| 7 | **AI Ticket Generation** | Auto-generates a human-readable incident description using Google Gemini or Groq, based on flags, raw logs, and context metadata |
-| 8 | **Multiple Output Formats** | Export results as structured Notes, Table, JSON, or a shareable encoded text |
+### 1. Multi-source Enrichment
+
+Queries up to 10 threat intelligence providers simultaneously — VirusTotal, URLScan, AbuseIPDB, Shodan, ThreatFox, MalwareBazaar, DNSDumpster, Hybrid Analysis, MxToolBox, and Whoxy. Each provider can be toggled individually, and results are displayed in a per-provider tabbed view showing detection scores, reputation data, and raw details from each source.
+
+![Provider selection panel](image/Providers.jpeg)
+
+![Per-provider tabbed result view](image/multiple%20provider%20output.jpeg)
+
+---
+
+### 2. IOC Type Auto-detection
+
+Automatically identifies and routes each indicator to the relevant providers — supports IPv4/IPv6, domain, URL, file hash (MD5/SHA1/SHA256), email, and WHOIS keywords. When **Auto-detect** and **Auto Provider** are enabled, mixed IOC types can be submitted together in one batch and the system handles classification and routing without manual configuration.
+
+![Multiple IOC types with Auto-detect and Auto Provider enabled](image/Multiple%20diffrent%20IOC%20with%20Auto%20IOC%20detector%20and%20Auto%20Provider%20choose.jpeg)
+
+![Result cards labeled by detected IOC type](image/multiple%20IOC%20results.jpeg)
+
+---
+
+### 3. Threat Flag Extraction
+
+Extracts 100+ granular threat flags from provider responses, each labeled with a severity level (CRITICAL, HIGH, MEDIUM, LOW) and mapped to MITRE ATT&CK technique IDs. Flags are grouped by severity in collapsible sections, making it easy to triage the most critical indicators first.
+
+![Threat Indicators grouped by severity with MITRE mappings](image/Threat%20Analysis%202.jpeg)
+
+---
+
+### 4. Verdict Aggregation
+
+Produces a final verdict per IOC — **Malicious**, **Suspicious**, **Unknown**, or **Benign** — based on consensus across all queried providers. The ticket notes output includes a session-level summary (total IOCs, count per verdict) followed by a per-IOC breakdown listing each provider's finding and a plain-language conclusion.
+
+![Ticket notes output with verdict summary and per-IOC conclusions](image/Ticket%20note%20ready%20output.jpeg)
+
+---
+
+### 5. Threat State & Level
+
+Determines the threat lifecycle state (e.g. Reconnaissance, Persistence, Impact) and assigns a threat level (Low → Very High), adjusted for asset criticality when the **Critical** flag is set. Also surfaces a human-readable risk label, a list of reasons driving the assessment, and all relevant MITRE ATT&CK tactics observed across providers.
+
+![Threat Analysis panel showing state, level, risk label, reasons, and MITRE tactics](image/Threat%20Analysis%201.jpeg)
+
+![Key Evidence panel with per-IOC metadata — malware family, domain age, open ports, first seen](image/Threat%20Analysis%203.jpeg)
+
+![Source Links panel with direct links to each provider's result page per IOC](image/Threat%20Analysis%204.jpeg)
+
+---
+
+### 6. Geolocation & Mapping
+
+Resolves IP addresses to country, city, ISP, and ASN, and plots them on an interactive OpenStreetMap map embedded in the result card. Geolocation context is also surfaced in the key evidence and ticket note outputs alongside other per-IOC metadata.
+
+---
+
+### 7. AI Ticket Generation
+
+Auto-generates a human-readable incident narrative using Google Gemini or Groq, grounded in the extracted flags, raw provider logs, and analyst-supplied context (alert name, host, host IP, detection time, device action, parent/child process, and free-text context). The AI provider and model can be selected via the Options panel before running the analysis.
+
+![Options panel showing AI provider selection and context fields](image/Options.jpeg)
+
+![AI-generated incident description narrative](image/AI%20Description%20result.jpeg)
+
+---
+
+### 8. Multiple Output Formats
+
+Results can be exported in four formats selectable from the Options panel — **Ticket Notes** (structured plain text per IOC, paste-ready for SIEM tickets), **Table** (tabular view with verdict, confidence, evidence, and sources), **JSON** (raw structured output for downstream processing), and **Shareable Text** (Base64-encoded summary, copy-to-clipboard ready).
+
+![Homepage showing the main input interface and output options](image/Homepage.jpeg)
 
 ---
 
