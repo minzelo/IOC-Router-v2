@@ -8,6 +8,8 @@
 
 IOC Router is a multi-source threat intelligence platform built for SOC analysts. Paste one or more suspicious indicators — IPs, domains, URLs, file hashes, emails, or bare WHOIS keywords — and get an enriched verdict aggregated from up to 10 threat intel providers, complete with severity-rated flags, MITRE ATT&CK mappings, geolocation, and an AI-generated incident ticket.
 
+Access from: https://ioc-router-v2.streamlit.app
+
 ---
 
 ## Features
@@ -42,16 +44,16 @@ IOC Router is a multi-source threat intelligence platform built for SOC analysts
 
 | Provider | Supported IOCs | Key Data |
 |----------|---------------|----------|
-| **VirusTotal** | IP, Domain, URL, Hash | 70+ AV engine results, YARA/SIGMA hits, sandbox behavior, reputation |
-| **URLScan.io** | URL, Domain | Screenshot, redirect chain, credential form detection, obfuscation |
-| **AbuseIPDB** | IP, Domain, URL | Abuse confidence score, report categories (DDoS, SSH brute force, phishing, etc.) |
-| **Shodan** | IP | Open ports, CVEs, service tags (tor, vpn, honeypot, etc.) |
-| **ThreatFox** | IP, Domain, URL, Hash | Malware family, C2 infrastructure, confidence level |
-| **MalwareBazaar** | Hash | File signature, type, YARA rules, known sample metadata |
-| **DNSDumpster** | Domain, URL | Subdomains, A/MX/NS records, SPF configuration |
-| **Hybrid Analysis** | IP, Domain, URL, Hash | Sandbox verdict, threat score, malware family, network IOCs, MITRE behavior |
-| **MxToolBox** | IP, Domain, URL, Email | Blacklist checks, PTR/MX/DNS/SPF/DMARC lookups, HTTP reachability, mail security posture |
-| **Whoxy** | Domain, URL, WHOIS Keyword | WHOIS registration data, registrant email/company, reverse WHOIS by registrant or keyword |
+| [**VirusTotal**](docs/virustotal.md) | IP, Domain, URL, Hash | 70+ AV engine results, YARA/SIGMA hits, sandbox behavior, reputation |
+| [**URLScan.io**](docs/urlscan.md) | URL, Domain | Screenshot, redirect chain, credential form detection, obfuscation |
+| [**AbuseIPDB**](docs/abuseipdb.md) | IP, Domain, URL | Abuse confidence score, report categories (DDoS, SSH brute force, phishing, etc.) |
+| [**Shodan**](docs/shodan.md) | IP | Open ports, CVEs, service tags (tor, vpn, honeypot, etc.) |
+| [**ThreatFox**](docs/threatfox.md) | IP, Domain, URL, Hash | Malware family, C2 infrastructure, confidence level |
+| [**MalwareBazaar**](docs/malwarebazaar.md) | Hash | File signature, type, YARA rules, known sample metadata |
+| [**DNSDumpster**](docs/dnsdumpster.md) | Domain, URL | Subdomains, A/MX/NS records, SPF configuration |
+| [**Hybrid Analysis**](docs/hybrid_analysis.md) | IP, Domain, URL, Hash | Sandbox verdict, threat score, malware family, network IOCs, MITRE behavior |
+| [**MxToolBox**](docs/mxtoolbox.md) | IP, Domain, URL, Email | Blacklist checks, PTR/MX/DNS/SPF/DMARC lookups, HTTP reachability, mail security posture |
+| [**Whoxy**](docs/whoxy.md) | Domain, URL, WHOIS Keyword | WHOIS registration data, registrant email/company, reverse WHOIS by registrant or keyword |
 
 ---
 
