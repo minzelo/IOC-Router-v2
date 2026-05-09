@@ -8,7 +8,7 @@
 
 IOC Router is a multi-source threat intelligence platform built for SOC analysts. Paste one or more suspicious indicators — IPs, domains, URLs, file hashes, emails, or bare WHOIS keywords — and get an enriched verdict aggregated from up to 10 threat intel providers, complete with severity-rated flags, MITRE ATT&CK mappings, geolocation, and an AI-generated incident ticket.
 
-Access from: https://ioc-router-v2.streamlit.app
+Access from: [https://ioc-router.streamlit.app](https://ioc-router.streamlit.app)
 
 ---
 
