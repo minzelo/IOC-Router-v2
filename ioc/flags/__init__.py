@@ -20,6 +20,7 @@ from .malwarebazaar import _flags_malwarebazaar
 from .hybrid_analysis import _flags_hybrid_analysis
 from .dnsdumpster import _flags_dnsdumpster
 from .multisource import _flags_multisource
+from .mxtoolbox import _flags_mxtoolbox
 
 
 def extract_ioc_flags(
@@ -33,6 +34,7 @@ def extract_ioc_flags(
     sh: dict,
     dnsd: dict,
     ha: dict,
+    mx: dict | None = None,
 ) -> list[dict]:
     """
     Extract all threat flags for a single IOC from all provider results.
@@ -50,6 +52,7 @@ def extract_ioc_flags(
     flags.extend(_flags_hybrid_analysis(ha))
     flags.extend(_flags_dnsdumpster(dnsd))
     flags.extend(_flags_multisource(vt, us, ab, tf, mb, ha))
+    flags.extend(_flags_mxtoolbox(mx or {}))
 
     # Deduplicate by id
     seen_ids: set[str] = set()
@@ -123,11 +126,11 @@ def flags_summary_for_evidence(flags: list[dict]) -> dict:
             ev["malware_executed"] = True
         if any(k in fid for k in ("C2", "NETWORK_COMMS", "TF_C2", "HA_NETWORK")):
             ev["c2_connection"] = True
-        if any(k in fid for k in ("PHISHING", "BRAND_IMP", "CREDENTIAL_HARVEST", "TF_PHISH")):
+        if any(k in fid for k in ("PHISHING", "BRAND_IMP", "CREDENTIAL_HARVEST", "TF_PHISH", "MX_SPF_FAIL", "MX_DMARC_FAIL", "MX_SPF_WARN", "MX_DMARC_WARN", "MX_BLACKLIST_HIT", "MX_BLACKLIST_CRITICAL")):
             ev["phishing_or_social_eng"] = True
         if any(k in fid for k in ("EXPLOIT", "SQLI", "WEBATTACK", "CVE")):
             ev["exploit_attempt"] = True
-        if any(k in fid for k in ("PORTSCAN", "RECON", "SCANNING", "WIDE_ATTACK")):
+        if any(k in fid for k in ("PORTSCAN", "RECON", "SCANNING", "WIDE_ATTACK", "MX_DNS_FAIL")):
             ev["scanning_or_recon"] = True
         if any(k in fid for k in ("PERSISTENCE", "REGISTRY_MOD", "MUTEX")):
             ev["persistence_mechanism"] = True

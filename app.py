@@ -231,7 +231,9 @@ if not _has_results:
             unsafe_allow_html=True,
         )
         _notes = [
-            "AI Description Feature & MxToolBox Description require own API key",
+            "<strong>Gemini, Grok, and MxToolBox</strong> require own API key",
+            "For more efficient and fast query turn off Auto Provider and deselect not needed providers",
+            "Whoxy provider is currently not available",
             "To refresh output do a hard refresh",
             "Project is still Under development",
         ]
@@ -327,7 +329,7 @@ if not _has_results:
                     st.checkbox("Shodan", value=True, key="provider_shodan")
                     st.checkbox("DNSDumpster", value=True, key="provider_dns")
                     st.checkbox("Hybrid Analysis", value=True, key="provider_ha")
-                    st.checkbox("Whoxy", value=True, key="provider_whoxy")
+                    st.checkbox("Whoxy (unavailable)", value=False, key="provider_whoxy", disabled=True)
 
         # Options expander
         with st.expander("⚙️ Options"):
@@ -387,6 +389,9 @@ if not _has_results:
             'font-size:0.72rem;color:#6b7280;margin-top:10px;line-height:1.8;">'
             'Enter one or more IOCs above, then press '
             '<strong style="color:#e2e6f0;">▶ Run</strong> to start the analysis.'
+            '<br>Official Documentation: '
+            '<a href="https://github.com/minzelo/IOC-Router-v2" target="_blank" '
+            'style="color:#6b7280;text-decoration:underline;">github.com/minzelo/IOC-Router-v2</a>'
             "</p>",
             unsafe_allow_html=True,
         )
@@ -509,7 +514,7 @@ else:
                     st.checkbox("Shodan", value=True, key="provider_shodan")
                     st.checkbox("DNSDumpster", value=True, key="provider_dns")
                     st.checkbox("Hybrid Analysis", value=True, key="provider_ha")
-                    st.checkbox("Whoxy", value=True, key="provider_whoxy")
+                    st.checkbox("Whoxy (unavailable)", value=False, key="provider_whoxy", disabled=True)
 
         col_btn = st.columns([1.6, 0.8, 1.8, 2.8], gap="small")
         with col_btn[0]:

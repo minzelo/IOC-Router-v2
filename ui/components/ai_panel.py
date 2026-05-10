@@ -39,6 +39,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
     shodan_results = run_results["shodan"]
     dnsd_results = run_results.get("dnsd", {})
     ha_results = run_results.get("ha", {})
+    mxtoolbox_results = run_results.get("mxtoolbox", {})
 
     st.subheader("AI-Output")
     if not settings.gemini_key:
@@ -251,6 +252,10 @@ def render_ai_panel(run_results: dict, settings) -> None:
             lines.append(f"  Shodan: {_clip(shodan_results.get(ioc.value, {}))}")
             lines.append(f"  DNSDumpster: {_clip(dnsd_results.get(ioc.value, {}))}")
             lines.append(f"  Hybrid Analysis: {_clip(_ha_text_payload(ioc.value))}")
+            _mx_entry = mxtoolbox_results.get(ioc.value, {})
+            if _mx_entry and not _mx_entry.get("error"):
+                _mx_clip = {"verdict": _mx_entry.get("verdict"), "total_failed": _mx_entry.get("total_failed"), "total_warnings": _mx_entry.get("total_warnings")}
+                lines.append(f"  MxToolBox: {_clip(_mx_clip)}")
             # Inject structured threat flags as additional context
             _ioc_flags = extract_ioc_flags(
                 ioc.value, ioc.type,
@@ -262,6 +267,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
                 shodan_results.get(ioc.value, {}) or {},
                 dnsd_results.get(ioc.value, {}) or {},
                 ha_results.get(ioc.value, {}) or {},
+                mxtoolbox_results.get(ioc.value, {}) or {},
             )
             if _ioc_flags:
                 lines.append(f"  Threat Flags:\n{flags_to_ai_context(_ioc_flags)}")
@@ -334,10 +340,11 @@ def render_ai_panel(run_results: dict, settings) -> None:
             sh   = shodan_results.get(ioc.value, {}) or {}
             dnsd = dnsd_results.get(ioc.value, {}) or {}
             ha   = ha_results.get(ioc.value, {}) or {}
+            mx   = mxtoolbox_results.get(ioc.value, {}) or {}
 
             # --- Derive evidence from flags ---
             ioc_flags = extract_ioc_flags(
-                ioc.value, ioc.type, _vt, us, ab, tf, mb, sh, dnsd, ha
+                ioc.value, ioc.type, _vt, us, ab, tf, mb, sh, dnsd, ha, mx
             )
             flag_summary = flags_summary_for_evidence(ioc_flags)
             for k, v in flag_summary["evidence"].items():
@@ -864,6 +871,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
                     shodan_results.get(_ioc.value, {}) or {},
                     dnsd_results.get(_ioc.value, {}) or {},
                     ha_results.get(_ioc.value, {}) or {},
+                    mxtoolbox_results.get(_ioc.value, {}) or {},
                 ))
             # Deduplicate
             _seen_fids: set[str] = set()
