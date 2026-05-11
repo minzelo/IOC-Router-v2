@@ -609,17 +609,18 @@ def render_ai_panel(run_results: dict, settings) -> None:
         _ta_result = analyzeThreat(_ta_sum)
         _ta_state  = _ta_result.get("threat_state", "Exposure")
         _ta_level  = _ta_result.get("threat_level", "Low")
-        _ta_label  = _ta_result.get("risk_level_label", "")
+        _ta_verdict = _ta_result.get("verdict", "")
         _ta_mitre  = _ta_result.get("mitre_alignment", [])
         _ta_reasons = _ta_result.get("reasons", [])
         _emoji_map = {"Low": "🟢", "Medium": "🟡", "High": "🟠", "Very High": "🔴"}
+        _verdict_emoji = {"False Positive": "🟢", "Benign Positive": "🟠", "True Positive": "🔴"}
         lines.append("--- THREAT ANALYSIS ---")
         _da = st.session_state.get("device_action", "")
         if _da:
             lines.append(f"Device Action : {_da}")
         lines.append(f"Threat State : {_ta_state}")
         lines.append(f"Threat Level : {_emoji_map.get(_ta_level, '')} {_ta_level}".rstrip())
-        lines.append(f"Risk Label   : {_ta_label or '—'}")
+        lines.append(f"Verdict      : {_verdict_emoji.get(_ta_verdict, '')} {_ta_verdict or '—'}".rstrip())
         if _ta_reasons:
             lines.append("Reasons:")
             for _r in _ta_reasons:
@@ -808,7 +809,8 @@ def render_ai_panel(run_results: dict, settings) -> None:
         _ta_result  = analyzeThreat(_ta_summary)
         _ta_state   = _ta_result.get("threat_state", "Exposure")
         _ta_level   = _ta_result.get("threat_level", "Low")
-        _ta_label   = _ta_result.get("risk_level_label", "")
+        _ta_verdict = _ta_result.get("verdict", "")
+        _ta_verdict_color = _ta_result.get("verdict_color", "#aaa")
         _ta_mitre   = _ta_result.get("mitre_alignment", [])
         _ta_reasons = _ta_result.get("reasons", [])
 
@@ -816,9 +818,10 @@ def render_ai_panel(run_results: dict, settings) -> None:
         _level_badge = f'<span style="background:{_level_color};color:#fff;padding:2px 10px;border-radius:12px;font-size:0.82rem;font-weight:600">{_ta_level}</span>'
         _state_color = {"Exposure":"#3498db","Intrusion Attempt":"#f39c12","Compromise":"#e67e22","Privilege Escalation":"#e74c3c","Lateral Movement":"#c0392b","Persistence":"#8e44ad","Impact":"#7b241c"}.get(_ta_state,"#555")
         _state_badge = f'<span style="background:{_state_color};color:#fff;padding:2px 10px;border-radius:12px;font-size:0.82rem;font-weight:600">{_ta_state}</span>'
+        _verdict_badge = f'<span style="background:{_ta_verdict_color};color:#fff;padding:2px 10px;border-radius:12px;font-size:0.82rem;font-weight:600">{_ta_verdict or "—"}</span>'
 
         with st.expander("**Threat Analysis**", expanded=True):
-            # ── Row 1: State + Level + Label ─────────────────────────────
+            # ── Row 1: State + Level + Verdict ───────────────────────────
             _h1, _h2, _h3 = st.columns([2, 2, 3])
             with _h1:
                 st.markdown("**Threat State**")
@@ -827,8 +830,8 @@ def render_ai_panel(run_results: dict, settings) -> None:
                 st.markdown("**Threat Level**")
                 st.markdown(_level_badge, unsafe_allow_html=True)
             with _h3:
-                st.markdown("**Risk Label**")
-                st.markdown(f'<span style="color:#aaa;font-size:0.9rem">{_ta_label or "—"}</span>', unsafe_allow_html=True)
+                st.markdown("**Verdict**")
+                st.markdown(_verdict_badge, unsafe_allow_html=True)
 
             # ── Row 2: Reasons ────────────────────────────────────────────
             if _ta_reasons:
