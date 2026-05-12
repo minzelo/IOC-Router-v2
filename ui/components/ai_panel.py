@@ -59,7 +59,6 @@ def render_ai_panel(run_results: dict, settings) -> None:
     if not settings.gemini_key:
         st.info("Gemini API key not set. Set the env var: GEMINI_KEY")
     ai_provider = st.selectbox("AI Provider", ["Gemini", "Groq"], key="ai_provider")
-    scope = st.selectbox("Scope", ["All IOCs", "Selected IOC(s)"], index=0)
     tone = st.selectbox("Tone", ["SOC L1 concise", "More formal"])
     use_only_evidence = st.checkbox("Use only evidence shown (no guessing)", value=True)
     sanitize = st.checkbox("Sanitize sensitive data", value=True)
@@ -78,7 +77,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
             settings.gemini_model = st.session_state.get("gemini_model_select") or settings.gemini_model
         settings.gemini_api_version = "v1"
     selections = [ioc.value for ioc in items]
-    selected = st.multiselect("Select IOC(s)", selections) if scope == "Selected IOC(s)" else selections
+    selected = selections
 
     def _clip(value: object, limit: int = 600) -> str:
         text = str(value)

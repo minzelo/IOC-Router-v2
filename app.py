@@ -161,6 +161,18 @@ for _k in ["sk_gemini", "sk_grok", "sk_vt", "sk_urlscan", "sk_abuse",
     if _k not in st.session_state:
         st.session_state[_k] = ""
 
+for _k, _v in {
+    "provider_vt": False, "provider_urlscan": False, "provider_abuse": False,
+    "provider_tf": False, "provider_mb": False, "provider_shodan": False,
+    "provider_dns": False, "provider_ha": False, "provider_mxtoolbox": False,
+    "provider_whoxy": False, "provider_ransomware_live": False,
+    "ioc_grp_ip": False, "ioc_grp_domain": False, "ioc_grp_hash": False,
+    "ioc_grp_email": False, "ioc_grp_keyword": False,
+    "auto_detect_and_provider": True,
+}.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
 
 def _sk(key: str) -> str | None:
     """Return a non-empty stripped session-state API key, or None."""
@@ -215,9 +227,10 @@ _was_landing = not _has_results  # True when Run is first clicked from chat UI
 # ── Variable defaults (overridden by widgets below) ───────────────────────────
 output_format: str = st.session_state.get("output_format", "Ticket notes")
 auto_generate_on_run: bool = st.session_state.get("auto_generate_on_run", False)
-auto_choose_provider: bool = st.session_state.get("auto_choose_provider", True)
+auto_detect_and_provider: bool = st.session_state.get("auto_detect_and_provider", True)
+auto_detect: bool = auto_detect_and_provider
+auto_choose_provider: bool = auto_detect_and_provider
 critical_asset: bool = st.session_state.get("critical_asset", False)
-auto_detect: bool = st.session_state.get("auto_detect", True)
 allow_urlscan_submit: bool = True
 run: bool = False
 clear: bool = False
@@ -253,6 +266,104 @@ if st.session_state.get("load_sample"):
     st.session_state["ioc_input"] = "8.8.8.8\nexample.com\nhttps://example.com/login\n44d88612fea8a8f36de82e1278abb02f"
     st.session_state["load_sample"] = False
     raw = st.session_state["ioc_input"]
+
+# ── Provider groups — constants & helpers ────────────────────────────────────
+_PROVIDER_LABELS: dict[str, str] = {
+    "vt":              "VirusTotal",
+    "urlscan":         "URLScan",
+    "abuse":           "AbuseIPDB",
+    "tf":              "ThreatFox",
+    "mb":              "MalwareBazaar",
+    "shodan":          "Shodan",
+    "dns":             "DNSDumpster",
+    "ha":              "Hybrid Analysis",
+    "mxtoolbox":       "MxToolBox",
+    "whoxy":           "WhoXY (unavailable)",
+    "ransomware_live": "Ransomware Live",
+}
+_PROVIDER_DISABLED: set[str] = {"whoxy"}
+_GROUP_PROVIDERS: dict[str, list[str]] = {
+    "ip":         ["vt", "abuse", "tf", "shodan", "ha", "mxtoolbox"],
+    "domain_url": ["vt", "urlscan", "abuse", "tf", "shodan", "dns", "ha", "mxtoolbox", "whoxy", "ransomware_live"],
+    "hash":       ["vt", "tf", "mb", "ha"],
+    "email":      ["mxtoolbox"],
+    "keyword":    ["whoxy", "ransomware_live"],
+}
+_GROUP_IOC_KEY: dict[str, str] = {
+    "ip":         "ioc_grp_ip",
+    "domain_url": "ioc_grp_domain",
+    "hash":       "ioc_grp_hash",
+    "email":      "ioc_grp_email",
+    "keyword":    "ioc_grp_keyword",
+}
+_GROUP_LABEL: dict[str, str] = {
+    "ip":         "IP",
+    "domain_url": "Domain / URL",
+    "hash":       "Hash",
+    "email":      "Email",
+    "keyword":    "Keyword",
+}
+_PROVIDER_TO_GROUPS: dict[str, list[str]] = {}
+for _g, _ps in _GROUP_PROVIDERS.items():
+    for _p in _ps:
+        _PROVIDER_TO_GROUPS.setdefault(_p, []).append(_g)
+
+
+def _on_provider_toggle(p: str, group: str) -> None:
+    """Sync provider checkbox state across all IOC groups."""
+    val = st.session_state.get(f"prov_{p}_{group}", True)
+    st.session_state[f"provider_{p}"] = val
+    for g in _PROVIDER_TO_GROUPS[p]:
+        st.session_state[f"prov_{p}_{g}"] = val
+
+
+def _on_ioc_group_toggle(group: str) -> None:
+    """Enable all providers in a group when the IOC type header is checked."""
+    if st.session_state.get(_GROUP_IOC_KEY[group], True):
+        for p in _GROUP_PROVIDERS[group]:
+            if p not in _PROVIDER_DISABLED:
+                st.session_state[f"provider_{p}"] = True
+                for g in _PROVIDER_TO_GROUPS[p]:
+                    st.session_state[f"prov_{p}_{g}"] = True
+
+
+def _render_providers_expander(expanded: bool = True) -> None:
+    """Render grouped Providers expander with per-IOC-type sections."""
+    for p, groups in _PROVIDER_TO_GROUPS.items():
+        global_val = st.session_state.get(f"provider_{p}", False)
+        for g in groups:
+            gkey = f"prov_{p}_{g}"
+            if gkey not in st.session_state:
+                st.session_state[gkey] = global_val
+
+    for ioc_key in _GROUP_IOC_KEY.values():
+        if ioc_key not in st.session_state:
+            st.session_state[ioc_key] = False
+
+    with st.expander("🔍 IOC & Providers", expanded=expanded):
+        for i, (group, providers) in enumerate(_GROUP_PROVIDERS.items()):
+            st.checkbox(
+                _GROUP_LABEL[group],
+                key=_GROUP_IOC_KEY[group],
+                on_change=_on_ioc_group_toggle,
+                args=(group,),
+            )
+            _gap, _pcol = st.columns([0.05, 0.95])
+            with _pcol:
+                _cols = st.columns(3)
+                ioc_active = st.session_state.get(_GROUP_IOC_KEY[group], False)
+                for j, p in enumerate(providers):
+                    with _cols[j % 3]:
+                        st.checkbox(
+                            _PROVIDER_LABELS[p],
+                            key=f"prov_{p}_{group}",
+                            disabled=p in _PROVIDER_DISABLED or not ioc_active,
+                            on_change=_on_provider_toggle,
+                            args=(p, group),
+                        )
+            if i < len(_GROUP_PROVIDERS) - 1:
+                st.divider()
+
 
 if not _has_results:
     # ── LANDING: Note left | Input center | CVE right ─────────────────────────
@@ -316,60 +427,37 @@ if not _has_results:
                 label_visibility="collapsed",
             )
             # Toolbar row inside card
-            _tc1, _tc2, _tc3, _tc4, _tc_badge, _tc_run = st.columns([1.1, 0.9, 0.85, 1.3, 1.1, 0.55])
+            _tc1, _tc2, _tc_run = st.columns([1.9, 1.2, 0.55])
             with _tc1:
-                auto_detect = st.checkbox("Auto-detect", value=True, key="auto_detect")
+                st.checkbox("Auto detect IOC & Provider", key="auto_detect_and_provider")
             with _tc2:
-                auto_generate_on_run = st.checkbox("Auto AI", value=False, key="auto_generate_on_run")
-            with _tc3:
-                critical_asset = st.checkbox("Critical", value=False, key="critical_asset")
-            with _tc4:
-                auto_choose_provider = st.checkbox("Auto Provider", value=True, key="auto_choose_provider")
-            with _tc_badge:
-                _prov = st.session_state.get("auto_ai_provider", "Gemini")
-                st.markdown(
-                    f'<div style="display:flex;align-items:center;gap:6px;margin-top:14px;'
-                    f'font-family:\'JetBrains Mono\',monospace;font-size:0.72rem;color:#6b7280;">'
-                    f'<span style="width:7px;height:7px;background:#4ade80;border-radius:50%;'
-                    f'box-shadow:0 0 6px #4ade80;flex-shrink:0;display:inline-block;"></span>'
-                    f'{_prov}</div>',
-                    unsafe_allow_html=True,
-                )
+                auto_generate_on_run = st.checkbox("Auto AI Description", value=False, key="auto_generate_on_run")
             with _tc_run:
                 run = st.button("▶", type="primary", key="run_btn_chat", use_container_width=True)
 
-        # IOC Types section — shown when Auto-detect is off
-        if not st.session_state.get("auto_detect", True):
-            with st.expander("IOC Types", expanded=True):
-                _it1, _it2 = st.columns(2)
-                with _it1:
-                    st.checkbox("IP", value=True, key="ioc_type_ip")
-                    st.checkbox("Hash", value=True, key="ioc_type_hash")
-                with _it2:
-                    st.checkbox("Domain / URL", value=True, key="ioc_type_domain")
-                    st.checkbox("Email", value=True, key="ioc_type_email")
-                    st.checkbox("Keyword", value=True, key="ioc_type_whois")
+        # Auto AI Description settings dropdown — shown below the input card
+        if auto_generate_on_run:
+            with st.expander("🤖 AI Description", expanded=True):
+                _ai_col1, _ai_col2 = st.columns(2)
+                with _ai_col1:
+                    st.selectbox("AI Provider", ["Gemini", "Groq"], index=0, key="auto_ai_desc_provider")
+                with _ai_col2:
+                    st.selectbox("Tone", ["SOC L1 concise", "More formal"], index=0, key="auto_ai_tone")
+                _chk1, _chk2 = st.columns(2)
+                with _chk1:
+                    st.checkbox("Use only evidence shown (no guessing)", value=True, key="auto_ai_use_only_evidence")
+                with _chk2:
+                    st.checkbox("Sanitize sensitive data", value=True, key="auto_ai_sanitize")
 
-        # Providers section — shown between card and Options when Auto Provider is off
-        if not st.session_state.get("auto_choose_provider", True):
-            with st.expander("Providers", expanded=True):
-                _pv1, _pv2 = st.columns(2)
-                with _pv1:
-                    st.checkbox("VirusTotal", value=True, key="provider_vt")
-                    st.checkbox("AbuseIPDB", value=True, key="provider_abuse")
-                    st.checkbox("ThreatFox", value=True, key="provider_tf")
-                    st.checkbox("MalwareBazaar", value=True, key="provider_mb")
-                    st.checkbox("MxToolBox", value=True, key="provider_mxtoolbox")
-                    st.checkbox("Ransomware Live", value=True, key="provider_ransomware_live")
-                with _pv2:
-                    st.checkbox("urlscan", value=True, key="provider_urlscan")
-                    st.checkbox("Shodan", value=True, key="provider_shodan")
-                    st.checkbox("DNSDumpster", value=True, key="provider_dns")
-                    st.checkbox("Hybrid Analysis", value=True, key="provider_ha")
-                    st.checkbox("Whoxy (unavailable)", value=False, key="provider_whoxy", disabled=True)
+        # Providers section — shown when Auto detect & Provider is off
+        if not st.session_state.get("auto_detect_and_provider", True):
+            _render_providers_expander(expanded=True)
 
-        # Options expander
-        with st.expander("⚙️ Options"):
+        # Context expander
+        with st.expander("🗂️ Context"):
+            _crit = st.columns([1, 3])
+            with _crit[0]:
+                critical_asset = st.checkbox("Critical Asset", value=False, key="critical_asset")
             _sel = st.columns(2)
             with _sel[0]:
                 st.selectbox("AI Provider", ["Gemini", "Groq"], index=0, key="auto_ai_provider")
@@ -509,18 +597,14 @@ else:
                 key="device_action_others",
             )
 
-        col_chk = st.columns(4)
+        col_chk = st.columns(3)
         with col_chk[0]:
-            auto_detect = st.checkbox("Auto-detect type", value=True, key="auto_detect")
+            st.checkbox("Auto detect & Provider", value=True, key="auto_detect_and_provider")
         with col_chk[1]:
             auto_generate_on_run = st.checkbox(
                 "Auto Generate AI Output", value=False, key="auto_generate_on_run"
             )
         with col_chk[2]:
-            auto_choose_provider = st.checkbox(
-                "Auto-choose Provider", value=True, key="auto_choose_provider"
-            )
-        with col_chk[3]:
             critical_asset = st.checkbox("Critical Asset", value=False, key="critical_asset")
 
         if auto_generate_on_run:
@@ -538,33 +622,8 @@ else:
                     "Output format", ["Ticket notes", "Table", "JSON", "Shareable Text"], index=0, key="output_format"
                 )
 
-        if not auto_detect:
-            with st.expander("IOC Types", expanded=False):
-                _sit1, _sit2 = st.columns(2)
-                with _sit1:
-                    st.checkbox("IP", value=True, key="ioc_type_ip")
-                    st.checkbox("Hash", value=True, key="ioc_type_hash")
-                with _sit2:
-                    st.checkbox("Domain / URL", value=True, key="ioc_type_domain")
-                    st.checkbox("Email", value=True, key="ioc_type_email")
-                    st.checkbox("Keyword", value=True, key="ioc_type_whois")
-
-        if not auto_choose_provider:
-            with st.expander("Providers", expanded=False):
-                _sp1, _sp2 = st.columns(2)
-                with _sp1:
-                    st.checkbox("VirusTotal", value=True, key="provider_vt")
-                    st.checkbox("AbuseIPDB", value=True, key="provider_abuse")
-                    st.checkbox("ThreatFox", value=True, key="provider_tf")
-                    st.checkbox("MalwareBazaar", value=True, key="provider_mb")
-                    st.checkbox("MxToolBox", value=True, key="provider_mxtoolbox")
-                    st.checkbox("Ransomware Live", value=True, key="provider_ransomware_live")
-                with _sp2:
-                    st.checkbox("urlscan", value=True, key="provider_urlscan")
-                    st.checkbox("Shodan", value=True, key="provider_shodan")
-                    st.checkbox("DNSDumpster", value=True, key="provider_dns")
-                    st.checkbox("Hybrid Analysis", value=True, key="provider_ha")
-                    st.checkbox("Whoxy (unavailable)", value=False, key="provider_whoxy", disabled=True)
+        if not auto_detect_and_provider:
+            _render_providers_expander(expanded=False)
 
         col_btn = st.columns([1.6, 0.8, 1.8, 2.8], gap="small")
         with col_btn[0]:
@@ -578,15 +637,15 @@ else:
 _allowed_ioc_types: set[str] | None = None
 if not auto_detect:
     _allowed_ioc_types = set()
-    if st.session_state.get("ioc_type_ip", True):
+    if st.session_state.get("ioc_grp_ip", True):
         _allowed_ioc_types.add("ip")
-    if st.session_state.get("ioc_type_domain", True):
+    if st.session_state.get("ioc_grp_domain", True):
         _allowed_ioc_types.update({"domain", "url"})
-    if st.session_state.get("ioc_type_hash", True):
+    if st.session_state.get("ioc_grp_hash", True):
         _allowed_ioc_types.add("hash")
-    if st.session_state.get("ioc_type_email", True):
+    if st.session_state.get("ioc_grp_email", True):
         _allowed_ioc_types.add("email")
-    if st.session_state.get("ioc_type_whois", True):
+    if st.session_state.get("ioc_grp_keyword", True):
         _allowed_ioc_types.add("whois")
 parsed_input_items = parse_iocs(raw, auto_detect=auto_detect, allowed_types=_allowed_ioc_types) if raw.strip() else []
 current_ioc_signature = tuple((ioc.value, ioc.type) for ioc in parsed_input_items)
@@ -615,7 +674,8 @@ run_requested = run or auto_run_enrichment
 if run_requested:
     st.session_state["auto_generate_ai"] = bool(auto_generate_on_run)
     if auto_generate_on_run:
-        auto_ai_provider = "Groq" if st.session_state.get("auto_ai_provider") == "Grok" else "Gemini"
+        _raw_prov = st.session_state.get("auto_ai_desc_provider") or st.session_state.get("auto_ai_provider", "Gemini")
+        auto_ai_provider = "Groq" if _raw_prov == "Groq" else "Gemini"
         st.session_state["ai_provider"] = auto_ai_provider
 
 
