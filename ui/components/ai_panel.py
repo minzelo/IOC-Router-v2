@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import base64
+import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus, urlsplit, urlunsplit
+
+import requests
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -846,18 +849,292 @@ def render_ai_panel(run_results: dict, settings) -> None:
         _state_badge = f'<span style="background:{_state_color};color:#fff;padding:2px 10px;border-radius:12px;font-size:0.82rem;font-weight:600">{_ta_state}</span>'
         _verdict_badge = f'<span style="background:{_ta_verdict_color};color:#fff;padding:2px 10px;border-radius:12px;font-size:0.82rem;font-weight:600">{_ta_verdict or "—"}</span>'
 
+        # ── Pre-compute data needed by both the override send and display rows ──
+        _mitre_names = {
+            "TA0001": "Initial Access", "TA0002": "Execution", "TA0003": "Persistence",
+            "TA0004": "Privilege Escalation", "TA0005": "Defense Evasion",
+            "TA0006": "Credential Access", "TA0007": "Discovery",
+            "TA0008": "Lateral Movement", "TA0009": "Collection",
+            "TA0010": "Exfiltration", "TA0011": "Command & Control",
+            "TA0040": "Impact", "TA0042": "Resource Development",
+            "TA0043": "Reconnaissance",
+        }
+        _tactic_ids = [t for t in _ta_mitre if t.startswith("TA")]
+
+        _all_flags: list[dict] = []
+        for _ioc in items:
+            if selected and _ioc.value not in selected:
+                continue
+            _all_flags.extend(extract_ioc_flags(
+                _ioc.value, _ioc.type,
+                vt_results.get(_ioc.value, {}) or {},
+                urlscan_results.get(_ioc.value, {}) or {},
+                abuse_results.get(_ioc.value, {}) or {},
+                tf_results.get(_ioc.value, {}) or {},
+                mb_results.get(_ioc.value, {}) or {},
+                shodan_results.get(_ioc.value, {}) or {},
+                dnsd_results.get(_ioc.value, {}) or {},
+                ha_results.get(_ioc.value, {}) or {},
+                mxtoolbox_results.get(_ioc.value, {}) or {},
+                ransomware_live_results.get(_ioc.value, {}) or {},
+            ))
+        _seen_fids: set[str] = set()
+        _deduped_flags: list[dict] = []
+        for _f in _all_flags:
+            if _f["id"] not in _seen_fids:
+                _seen_fids.add(_f["id"])
+                _deduped_flags.append(_f)
+
+        _ke_rows: list[tuple[str, str, str]] = []  # (ioc, label, value)
+        for _ioc in items:
+            if selected and _ioc.value not in selected:
+                continue
+            _vt_i  = vt_results.get(_ioc.value, {}) or {}
+            _us_i  = urlscan_results.get(_ioc.value, {}) or {}
+            _tf_i  = tf_results.get(_ioc.value, {}) or {}
+            _mb_i  = mb_results.get(_ioc.value, {}) or {}
+            _sh_i  = shodan_results.get(_ioc.value, {}) or {}
+            _ha_i  = ha_results.get(_ioc.value, {}) or {}
+            _at_i  = (_vt_i.get("attributes") or {})
+
+            _family = (
+                str(_ha_i.get("malware_family") or "").strip()
+                or str(((_tf_i.get("data") or [{}])[0]).get("malware") or "").strip()
+                or str(_mb_i.get("data", [{}])[0].get("signature") if isinstance(_mb_i.get("data"), list) and _mb_i.get("data") else "").strip()
+            )
+            if _family:
+                _ke_rows.append((_ioc.value, "Malware Family", _family))
+
+            _fs = _at_i.get("first_seen_itw_date") or _at_i.get("first_submission_date")
+            if _fs:
+                try:
+                    _fs_str = datetime.utcfromtimestamp(int(_fs)).strftime("%Y-%m-%d")
+                except Exception:
+                    _fs_str = str(_fs)[:10]
+                _ke_rows.append((_ioc.value, "First Seen", _fs_str))
+
+            _cd = _at_i.get("creation_date")
+            if _cd:
+                try:
+                    _age = (datetime.utcnow() - datetime.utcfromtimestamp(int(_cd))).days
+                    _ke_rows.append((_ioc.value, "Domain Age", f"{_age} days"))
+                except Exception:
+                    pass
+
+            _us_result = _us_i.get("result", {}) or {}
+            _us_data = _us_result.get("data", {}) if isinstance(_us_result.get("data"), dict) else {}
+            _us_reqs = _us_data.get("requests") or _us_result.get("http") or []
+            if isinstance(_us_reqs, list) and _us_reqs:
+                _seen_r: set = set()
+                _chain_r: list = []
+                for _tx in _us_reqs:
+                    if not isinstance(_tx, dict):
+                        continue
+                    _u = (_tx.get("request") or {}).get("url")
+                    if isinstance(_u, str) and _u not in _seen_r:
+                        _seen_r.add(_u)
+                        _chain_r.append(_u)
+                _nr = max(len(_chain_r) - 1, 0)
+                if _nr > 0:
+                    _ke_rows.append((_ioc.value, "Redirect Hops", str(_nr)))
+
+            _sh_sum = _sh_i.get("summary", {}) if isinstance(_sh_i.get("summary"), dict) else {}
+            _sh_roll = (_sh_sum.get("shodan", {}) or {}).get("rollup", {})
+            _sh_cves = _sh_roll.get("cves") or _sh_i.get("vulns") or []
+            if isinstance(_sh_cves, list) and _sh_cves:
+                _ke_rows.append((_ioc.value, "CVEs (Shodan)", str(len(_sh_cves))))
+
+            _sh_ports = _sh_roll.get("unique_ports") or _sh_i.get("ports") or []
+            if isinstance(_sh_ports, list) and _sh_ports:
+                _ke_rows.append((_ioc.value, "Open Ports", str(len(_sh_ports))))
+
+            _us_brands = ((_us_i.get("verdicts", {}) or {}).get("overall", {}) or {}).get("brands") or []
+            if _us_brands:
+                _ke_rows.append((_ioc.value, "Brand Impersonation", ", ".join(str(b) for b in _us_brands[:3])))
+
+            _ab_i = abuse_results.get(_ioc.value, {}) or {}
+            _ab_score = _ab_i.get("abuseConfidenceScore")
+            if _ab_score is not None and int(_ab_score) >= 25:
+                _ke_rows.append((_ioc.value, "Abuse Confidence", f"{_ab_score}%"))
+
+            _rl_i = ransomware_live_results.get(_ioc.value, {}) or {}
+            _rl_count = _rl_i.get("count") or 0
+            if _rl_count > 0:
+                _rl_groups = list(dict.fromkeys(
+                    str(v.get("group_name") or "") for v in (_rl_i.get("victims") or []) if v.get("group_name")
+                ))
+                _rl_label = _rl_groups[0] if _rl_groups else f"{_rl_count} record(s)"
+                _ke_rows.append((_ioc.value, "Ransomware Group", _rl_label))
+
         with st.expander("**Threat Analysis**", expanded=True):
-            # ── Row 1: State + Level + Verdict ───────────────────────────
+            # ── Row 1: State + Level + Verdict with analyst override dropdowns ──
+            _state_options = [
+                "Exposure", "Intrusion Attempt", "Compromise",
+                "Privilege Escalation", "Lateral Movement", "Persistence", "Impact",
+            ]
+            _level_options = ["Low", "Medium", "High", "Very High"]
+            _verdict_options = ["False Positive", "Benign Positive", "True Positive"]
+
             _h1, _h2, _h3 = st.columns([2, 2, 3])
             with _h1:
-                st.markdown("**Threat State**")
-                st.markdown(_state_badge, unsafe_allow_html=True)
+                _sel_state = st.selectbox(
+                    "Threat State", _state_options,
+                    index=_state_options.index(_ta_state) if _ta_state in _state_options else 0,
+                    key="ta_override_state",
+                )
             with _h2:
-                st.markdown("**Threat Level**")
-                st.markdown(_level_badge, unsafe_allow_html=True)
+                _sel_level = st.selectbox(
+                    "Threat Level", _level_options,
+                    index=_level_options.index(_ta_level) if _ta_level in _level_options else 0,
+                    key="ta_override_level",
+                )
             with _h3:
-                st.markdown("**Verdict**")
-                st.markdown(_verdict_badge, unsafe_allow_html=True)
+                _sel_verdict = st.selectbox(
+                    "Verdict", _verdict_options,
+                    index=_verdict_options.index(_ta_verdict) if _ta_verdict in _verdict_options else 0,
+                    key="ta_override_verdict",
+                )
+
+            # Color each selectbox background to match its value
+            components.html("""
+            <script>
+            (function() {
+              var colorMap = {
+                "Exposure": "#3498db",
+                "Intrusion Attempt": "#f39c12",
+                "Compromise": "#e67e22",
+                "Privilege Escalation": "#e74c3c",
+                "Lateral Movement": "#c0392b",
+                "Persistence": "#8e44ad",
+                "Impact": "#7b241c",
+                "Low": "#2ecc71",
+                "Medium": "#f39c12",
+                "High": "#e67e22",
+                "Very High": "#e74c3c",
+                "False Positive": "#2ecc71",
+                "Benign Positive": "#f39c12",
+                "True Positive": "#e74c3c"
+              };
+              function applyColors() {
+                var doc = window.parent.document;
+                doc.querySelectorAll('[data-baseweb="select"]').forEach(function(sel) {
+                  var valEl = sel.querySelector('[class*="singleValue"]');
+                  if (!valEl) return;
+                  var text = valEl.textContent.trim();
+                  var color = colorMap[text];
+                  if (!color) return;
+                  sel.style.backgroundColor = color;
+                  sel.style.borderRadius = "8px";
+                  sel.style.border = "none";
+                  valEl.style.color = "#ffffff";
+                  valEl.style.fontWeight = "600";
+                  sel.querySelectorAll('[class*="indicatorContainer"] svg').forEach(function(svg) {
+                    svg.style.fill = "#ffffff";
+                  });
+                });
+              }
+              applyColors();
+              setTimeout(applyColors, 150);
+              setTimeout(applyColors, 600);
+            })();
+            </script>
+            """, height=0)
+
+            # ── Analyst override: reason textarea + send (shown only on change) ──
+            _changes: dict[str, tuple[str, str]] = {}
+            if _sel_state != _ta_state:
+                _changes["Threat State"] = (_ta_state, _sel_state)
+            if _sel_level != _ta_level:
+                _changes["Threat Level"] = (_ta_level, _sel_level)
+            if _sel_verdict != _ta_verdict:
+                _changes["Verdict"] = (_ta_verdict, _sel_verdict)
+
+            if not _changes:
+                st.caption("\\*Change Threat State to improve the app, thank you")
+
+            if _changes:
+                _analyst_reason = st.text_area(
+                    "Reason for change (optional)",
+                    placeholder="Enter your reasoning as analyst…",
+                    key="ta_analyst_reason",
+                    height=80,
+                )
+                if st.button("Send Feedback 📤", type="primary", key="ta_send_override"):
+                    _ioc_list_str = "\n".join(f"  • {v}" for v in (selected or []))
+                    _change_lines = "\n".join(
+                        f"  {k}: {orig} → {new}" for k, (orig, new) in _changes.items()
+                    )
+                    _reason_block = (
+                        f"\n📝 Analyst Reason:\n{(_analyst_reason or '').strip()}"
+                        if (_analyst_reason or "").strip() else ""
+                    )
+                    _mitre_text = ", ".join(
+                        f"{t} ({_mitre_names.get(t, t)})" for t in _tactic_ids
+                    ) or "—"
+                    _ti_lines = [
+                        f"  [{_f['severity']}] {_f['label']} ({_f['source']}): {_f['threat_type']}"
+                        for _f in _deduped_flags[:20]
+                    ]
+                    _ti_text = "\n".join(_ti_lines) or "—"
+                    _ke_text = "\n".join(
+                        f"  {lbl}: {val}" for _, lbl, val in _ke_rows[:12]
+                    ) or "—"
+                    _reasons_text = "\n".join(f"  - {r}" for r in _ta_reasons) or "—"
+                    _WIB = timezone(timedelta(hours=7))
+                    _ts = datetime.now(_WIB).strftime("%Y-%m-%d %H:%M:%S")
+                    _DIV = "━" * 26
+                    _msg_parts = [
+                        "🔍 IOC Router — Analyst Override",
+                        _DIV,
+                        f"🕐 {_ts} WIB",
+                        "",
+                        "📌 IOC Input:",
+                        _ioc_list_str or "  (none)",
+                        "",
+                        "🔄 Changes Made:",
+                        _change_lines,
+                    ]
+                    if _reason_block:
+                        _msg_parts.append(_reason_block)
+                    _msg_parts += [
+                        "",
+                        "📊 Threat Analysis:",
+                        f"  State: {_sel_state}  |  Level: {_sel_level}  |  Verdict: {_sel_verdict}",
+                        "",
+                        "📋 Reasons:",
+                        _reasons_text,
+                        "",
+                        "🎯 MITRE ATT&CK Tactics:",
+                        f"  {_mitre_text}",
+                        "",
+                        "🚨 Threat Indicators:",
+                        _ti_text,
+                        "",
+                        "🔑 Key Evidence:",
+                        _ke_text,
+                        "",
+                        _DIV,
+                        "📍 minzelo · IOC Router v1.0",
+                    ]
+                    _tg_msg = "\n".join(_msg_parts)
+                    _bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+                    _chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+                    if not _bot_token or not _chat_id:
+                        st.error(
+                            "Telegram not configured. "
+                            "Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env"
+                        )
+                    else:
+                        try:
+                            _tg_resp = requests.post(
+                                f"https://api.telegram.org/bot{_bot_token}/sendMessage",
+                                json={"chat_id": _chat_id, "text": _tg_msg},
+                                timeout=10,
+                            )
+                            _tg_resp.raise_for_status()
+                            st.toast("Analyst override sent to Telegram ✅")
+                        except requests.RequestException as _tg_err:
+                            st.error(f"Failed to send to Telegram: {_tg_err}")
 
             # ── Row 2: Reasons ────────────────────────────────────────────
             if _ta_reasons:
@@ -867,14 +1144,6 @@ def render_ai_panel(run_results: dict, settings) -> None:
                     st.markdown(f"- {_r}")
 
             # ── Row 3: MITRE ATT&CK tactics ──────────────────────────────
-            _mitre_names = {
-                "TA0001":"Initial Access","TA0002":"Execution","TA0003":"Persistence",
-                "TA0004":"Privilege Escalation","TA0005":"Defense Evasion","TA0006":"Credential Access",
-                "TA0007":"Discovery","TA0008":"Lateral Movement","TA0009":"Collection",
-                "TA0010":"Exfiltration","TA0011":"Command & Control","TA0040":"Impact",
-                "TA0042":"Resource Development","TA0043":"Reconnaissance",
-            }
-            _tactic_ids = [t for t in _ta_mitre if t.startswith("TA")]
             if _tactic_ids:
                 st.divider()
                 st.markdown("**MITRE ATT&CK Tactics**")
@@ -886,31 +1155,6 @@ def render_ai_panel(run_results: dict, settings) -> None:
                 st.markdown(_badge_html, unsafe_allow_html=True)
 
             # ── Row 4: IOC Flags ──────────────────────────────────────────
-            _all_flags: list[dict] = []
-            for _ioc in items:
-                if selected and _ioc.value not in selected:
-                    continue
-                _all_flags.extend(extract_ioc_flags(
-                    _ioc.value, _ioc.type,
-                    vt_results.get(_ioc.value, {}) or {},
-                    urlscan_results.get(_ioc.value, {}) or {},
-                    abuse_results.get(_ioc.value, {}) or {},
-                    tf_results.get(_ioc.value, {}) or {},
-                    mb_results.get(_ioc.value, {}) or {},
-                    shodan_results.get(_ioc.value, {}) or {},
-                    dnsd_results.get(_ioc.value, {}) or {},
-                    ha_results.get(_ioc.value, {}) or {},
-                    mxtoolbox_results.get(_ioc.value, {}) or {},
-                    ransomware_live_results.get(_ioc.value, {}) or {},
-                ))
-            # Deduplicate
-            _seen_fids: set[str] = set()
-            _deduped_flags: list[dict] = []
-            for _f in _all_flags:
-                if _f["id"] not in _seen_fids:
-                    _seen_fids.add(_f["id"])
-                    _deduped_flags.append(_f)
-
             if _deduped_flags:
                 st.divider()
                 st.markdown("**Threat Indicators**")
@@ -939,98 +1183,9 @@ def render_ai_panel(run_results: dict, settings) -> None:
                             st.markdown("---")
 
             # ── Row 5: Key Evidence per IOC ───────────────────────────────
-            _ke_rows: list[tuple[str, str, str]] = []  # (ioc, label, value)
-            for _ioc in items:
-                if selected and _ioc.value not in selected:
-                    continue
-                _vt_i  = vt_results.get(_ioc.value, {}) or {}
-                _us_i  = urlscan_results.get(_ioc.value, {}) or {}
-                _tf_i  = tf_results.get(_ioc.value, {}) or {}
-                _mb_i  = mb_results.get(_ioc.value, {}) or {}
-                _sh_i  = shodan_results.get(_ioc.value, {}) or {}
-                _ha_i  = ha_results.get(_ioc.value, {}) or {}
-                _at_i  = (_vt_i.get("attributes") or {})
-
-                # Malware family
-                _family = (
-                    str(_ha_i.get("malware_family") or "").strip()
-                    or str(((_tf_i.get("data") or [{}])[0]).get("malware") or "").strip()
-                    or str(_mb_i.get("data", [{}])[0].get("signature") if isinstance(_mb_i.get("data"), list) and _mb_i.get("data") else "").strip()
-                )
-                if _family:
-                    _ke_rows.append((_ioc.value, "Malware Family", _family))
-
-                # VT first seen
-                _fs = _at_i.get("first_seen_itw_date") or _at_i.get("first_submission_date")
-                if _fs:
-                    try:
-                        _fs_str = datetime.utcfromtimestamp(int(_fs)).strftime("%Y-%m-%d")
-                    except Exception:
-                        _fs_str = str(_fs)[:10]
-                    _ke_rows.append((_ioc.value, "First Seen", _fs_str))
-
-                # Domain age
-                _cd = _at_i.get("creation_date")
-                if _cd:
-                    try:
-                        _age = (datetime.utcnow() - datetime.utcfromtimestamp(int(_cd))).days
-                        _ke_rows.append((_ioc.value, "Domain Age", f"{_age} days"))
-                    except Exception:
-                        pass
-
-                # URLScan redirect count
-                _us_result = _us_i.get("result", {}) or {}
-                _us_data = _us_result.get("data", {}) if isinstance(_us_result.get("data"), dict) else {}
-                _us_reqs = _us_data.get("requests") or _us_result.get("http") or []
-                if isinstance(_us_reqs, list) and _us_reqs:
-                    _seen_r: set = set()
-                    _chain_r: list = []
-                    for _tx in _us_reqs:
-                        if not isinstance(_tx, dict): continue
-                        _u = (_tx.get("request") or {}).get("url")
-                        if isinstance(_u, str) and _u not in _seen_r:
-                            _seen_r.add(_u); _chain_r.append(_u)
-                    _nr = max(len(_chain_r) - 1, 0)
-                    if _nr > 0:
-                        _ke_rows.append((_ioc.value, "Redirect Hops", str(_nr)))
-
-                # Shodan CVEs
-                _sh_sum = _sh_i.get("summary", {}) if isinstance(_sh_i.get("summary"), dict) else {}
-                _sh_roll = (_sh_sum.get("shodan", {}) or {}).get("rollup", {})
-                _sh_cves = _sh_roll.get("cves") or _sh_i.get("vulns") or []
-                if isinstance(_sh_cves, list) and _sh_cves:
-                    _ke_rows.append((_ioc.value, "CVEs (Shodan)", str(len(_sh_cves))))
-
-                # Shodan open ports
-                _sh_ports = _sh_roll.get("unique_ports") or _sh_i.get("ports") or []
-                if isinstance(_sh_ports, list) and _sh_ports:
-                    _ke_rows.append((_ioc.value, "Open Ports", str(len(_sh_ports))))
-
-                # URLScan brand impersonation
-                _us_brands = ((_us_i.get("verdicts", {}) or {}).get("overall", {}) or {}).get("brands") or []
-                if _us_brands:
-                    _ke_rows.append((_ioc.value, "Brand Impersonation", ", ".join(str(b) for b in _us_brands[:3])))
-
-                # AbuseIPDB score
-                _ab_i = abuse_results.get(_ioc.value, {}) or {}
-                _ab_score = _ab_i.get("abuseConfidenceScore")
-                if _ab_score is not None and int(_ab_score) >= 25:
-                    _ke_rows.append((_ioc.value, "Abuse Confidence", f"{_ab_score}%"))
-
-                # Ransomware.live victim count + group
-                _rl_i = ransomware_live_results.get(_ioc.value, {}) or {}
-                _rl_count = _rl_i.get("count") or 0
-                if _rl_count > 0:
-                    _rl_groups = list(dict.fromkeys(
-                        str(v.get("group_name") or "") for v in (_rl_i.get("victims") or []) if v.get("group_name")
-                    ))
-                    _rl_label = _rl_groups[0] if _rl_groups else f"{_rl_count} record(s)"
-                    _ke_rows.append((_ioc.value, "Ransomware Group", _rl_label))
-
             if _ke_rows:
                 st.divider()
                 st.markdown("**Key Evidence**")
-                # Group by IOC
                 _ke_by_ioc: dict[str, list] = {}
                 for _iv, _lbl, _val in _ke_rows:
                     _ke_by_ioc.setdefault(_iv, []).append((_lbl, _val))

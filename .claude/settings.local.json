@@ -47,7 +47,10 @@
       "Bash(Select-Object Name, PSIsContainer)",
       "Bash(dir providers\\\\ransomware_live.py)",
       "Bash(Get-ChildItem \"c:\\\\Users\\\\rahma\\\\Documents\\\\Raihan\\\\Jobs\\\\Compnet\\\\IOC router v2\\\\\" -Name)",
-      "Bash(Get-ChildItem \"c:\\\\Users\\\\rahma\\\\Documents\\\\Raihan\\\\Jobs\\\\Compnet\\\\IOC router v2\\\\\" | Select-Object Name)"
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\rahma\\\\Documents\\\\Raihan\\\\Jobs\\\\Compnet\\\\IOC router v2\\\\\" | Select-Object Name)",
+      "WebFetch(domain:github.com)",
+      "Bash(Get-ChildItem -Recurse -Filter \"*.tsx\" -o -Filter \"*.ts\")",
+      "Bash(Select-Object -First 30 FullName)"
     ]
   }
 }

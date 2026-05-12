@@ -16,6 +16,7 @@ from core.cache import (
     ha_cached,
     mxtoolbox_cached,
     whoxy_cached,
+    ransomware_live_cached,
 )
 
 
@@ -32,8 +33,9 @@ def auto_provider_flags(items: list[IOC], settings_obj: Settings) -> dict[str, b
         "shodan": bool(settings_obj.shodan_key)            and bool(types & {"ip", "domain", "url"}),
         "dns":    bool(settings_obj.dnsdumpster_key)       and bool(types & {"domain", "url"}),
         "ha":         bool(settings_obj.hybrid_analysis_key)   and bool(types & {"ip", "domain", "url", "hash"}),
-        "mxtoolbox":  bool(settings_obj.mxtoolbox_key)         and bool(types & {"ip", "domain", "url", "email"}),
-        "whoxy":      bool(settings_obj.whoxy_key)             and bool(types & {"domain", "url", "whois"}),
+        "mxtoolbox":       bool(settings_obj.mxtoolbox_key)          and bool(types & {"ip", "domain", "url", "email"}),
+        "whoxy":           bool(settings_obj.whoxy_key)              and bool(types & {"domain", "url", "whois"}),
+        "ransomware_live": bool(settings_obj.ransomware_live_key)    and bool(types & {"domain", "url", "whois"}),
     }
 
 
@@ -53,9 +55,10 @@ def run_provider_lookups(
     mb_results      = mb_cached(ioc_payload, settings.malwarebazaar_key, CACHE_REV)                     if provider_flags["mb"]     else {}
     shodan_results  = shodan_cached(ioc_payload, settings.shodan_key, CACHE_REV)                        if provider_flags["shodan"] else {}
     dnsd_results    = dnsd_cached(ioc_payload, settings.dnsdumpster_key, CACHE_REV)                     if provider_flags["dns"]    else {}
-    ha_results         = ha_cached(ioc_payload, settings.hybrid_analysis_key, CACHE_REV)                if provider_flags["ha"]        else {}
-    mxtoolbox_results  = mxtoolbox_cached(ioc_payload, settings.mxtoolbox_key, CACHE_REV)              if provider_flags["mxtoolbox"] else {}
-    whoxy_results      = whoxy_cached(ioc_payload, settings.whoxy_key, CACHE_REV)                     if provider_flags["whoxy"]     else {}
+    ha_results              = ha_cached(ioc_payload, settings.hybrid_analysis_key, CACHE_REV)           if provider_flags["ha"]             else {}
+    mxtoolbox_results       = mxtoolbox_cached(ioc_payload, settings.mxtoolbox_key, CACHE_REV)         if provider_flags["mxtoolbox"]      else {}
+    whoxy_results           = whoxy_cached(ioc_payload, settings.whoxy_key, CACHE_REV)                 if provider_flags["whoxy"]          else {}
+    ransomware_live_results = ransomware_live_cached(ioc_payload, settings.ransomware_live_key, CACHE_REV) if provider_flags["ransomware_live"] else {}
 
     summary, rows = summarize_results(
         items,
@@ -78,7 +81,8 @@ def run_provider_lookups(
         "shodan":         shodan_results,
         "dnsd":           dnsd_results,
         "ha":             ha_results,
-        "mxtoolbox":      mxtoolbox_results,
-        "whoxy":          whoxy_results,
-        "provider_flags": provider_flags,
+        "mxtoolbox":        mxtoolbox_results,
+        "whoxy":            whoxy_results,
+        "ransomware_live":  ransomware_live_results,
+        "provider_flags":   provider_flags,
     }
