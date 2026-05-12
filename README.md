@@ -6,7 +6,7 @@
 ![AI Powered](https://img.shields.io/badge/AI_Powered-Gemini_%2B_Groq-blue)
 [![Live Demo](https://img.shields.io/badge/Live_Demo-minzelo--ioc--analyzer-FF4B4B?style=flat&logo=streamlit&logoColor=white)](https://minzelo-ioc-analyzer.streamlit.app)
 
-IOC Router is a multi-source threat intelligence platform built for SOC analysts. Paste one or more suspicious indicators — IPs, domains, URLs, file hashes, emails, or bare keywords — and get an enriched verdict aggregated from up to 10 threat intel providers, complete with severity-rated flags, MITRE ATT&CK mappings, geolocation, and an AI-generated incident ticket.
+IOC Router is a multi-source threat intelligence platform built for SOC analysts. Paste one or more suspicious indicators — IPs, domains, URLs, file hashes, emails, or bare keywords — and get an enriched verdict aggregated from up to 11 threat intel providers, complete with severity-rated flags, MITRE ATT&CK mappings, geolocation, and an AI-generated incident ticket.
 
 Access from: [https://ioc-router.streamlit.app](https://ioc-router.streamlit.app)
 
@@ -16,7 +16,7 @@ Access from: [https://ioc-router.streamlit.app](https://ioc-router.streamlit.app
 
 ### 1. Multi-source Enrichment
 
-Queries up to 10 threat intelligence providers simultaneously — VirusTotal, URLScan, AbuseIPDB, Shodan, ThreatFox, MalwareBazaar, DNSDumpster, Hybrid Analysis, MxToolBox, and Whoxy. Each provider can be toggled individually, and results are displayed in a per-provider tabbed view showing detection scores, reputation data, and raw details from each source.
+Queries up to 11 threat intelligence providers simultaneously — VirusTotal, URLScan, AbuseIPDB, Shodan, ThreatFox, MalwareBazaar, DNSDumpster, Hybrid Analysis, MxToolBox, Whoxy, and Ransomware.live. Each provider can be toggled individually, and results are displayed in a per-provider tabbed view showing detection scores, reputation data, and raw details from each source.
 
 <p align="center">
   <img src="image/Providers.jpeg" width="40%">
@@ -133,6 +133,7 @@ Results can be exported in four formats selectable from the Options panel — **
 | [**Hybrid Analysis**](docs/hybrid_analysis.md) | IP, Domain, URL, Hash | Sandbox verdict, threat score, malware family, network IOCs, MITRE behavior |
 | [**MxToolBox**](docs/mxtoolbox.md) | IP, Domain, URL, Email | Blacklist checks, PTR/MX/DNS/SPF/DMARC lookups, HTTP reachability, mail security posture |
 | [**Whoxy**](docs/whoxy.md) | Domain, URL, Keyword | WHOIS registration data, registrant email/company, reverse WHOIS by registrant or keyword |
+| [**Ransomware.live**](docs/ransomware_live.md) | Domain, URL, Keyword | Victim database search — ransomware group, incident date, breach records from dark-web leak sites |
 
 ---
 
@@ -198,6 +199,7 @@ ioc-router/
 │       ├── hybrid_analysis.py
 │       ├── dnsdumpster.py
 │       ├── multisource.py        # Cross-provider correlation flags
+│       ├── ransomware_live.py    # Ransomware.live victim flags
 │       └── base.py               # Shared flag builder helpers
 │
 ├── providers/                    # Provider API clients
@@ -211,6 +213,7 @@ ioc-router/
 │   ├── dnsdumpster.py
 │   ├── mxtoolbox.py              # MxToolBox DNS/blacklist/mail lookups
 │   ├── whoxy.py                  # Whoxy WHOIS + reverse WHOIS
+│   ├── ransomware_live.py        # Ransomware.live victim search
 │   ├── gemini.py                 # Google Gemini AI client
 │   └── groq.py                   # Groq AI client
 │
@@ -235,6 +238,7 @@ ioc-router/
 │   ├── dnsdumpster.md
 │   ├── mxtoolbox.md
 │   ├── whoxy.md
+│   ├── ransomware_live.md
 │   ├── gemini.md
 │   └── grok.md
 │
@@ -302,6 +306,7 @@ DNSDUMPSTER_KEY=your_dnsdumpster_key
 HYBRID_ANALYSIS_KEY=your_hybrid_analysis_key
 MXTOOLBOX_KEY=your_mxtoolbox_key
 WHOXY_KEY=your_whoxy_key
+RANSOMWARE_LIVE_KEY=your_ransomware_live_key
 GEMINI_KEY=your_gemini_key
 GEMINI_KEY_BACKUP=your_gemini_backup_key          # optional
 GEMINI_MODEL=gemini-2.5-flash                     # optional, this is the default

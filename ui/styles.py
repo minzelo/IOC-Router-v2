@@ -169,6 +169,32 @@ GLOBAL_CSS_AND_HEADER = """
     .st-emotion-cache-1cypcdb {
         display: none !important;
     }
+    /* Report Bug button in header */
+    .report-bug-btn {
+        position: absolute;
+        right: 3rem;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 0.84rem;
+        font-weight: 500;
+        font-family: inherit;
+        line-height: 1;
+        cursor: pointer;
+        color: rgba(245,247,251,0.82);
+        user-select: none;
+        z-index: 10001;
+        padding: 8px 18px;
+        border-radius: 6px;
+        background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.18);
+        transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+    .report-bug-btn:hover {
+        background: rgba(255,255,255,0.14);
+        color: #fff;
+        border-color: rgba(255,255,255,0.3);
+    }
+
     /* Burger button in header */
     .drawer-burger {
         position: absolute;
@@ -276,11 +302,13 @@ GLOBAL_CSS_AND_HEADER = """
     [data-testid="stTextArea"] textarea {
         color: #e6edf3 !important;
     }
+
     </style>
     <div class="fixed-app-header" style="cursor:default;">
         <span class="drawer-burger" id="drawer-burger-btn">☰</span>
         <h1 class="fixed-app-header__title" onclick="window.location.reload();" style="cursor:pointer;" title="Back to home">🛡️ IOC Router 🛡️</h1>
         <p class="fixed-app-header__subtitle">IOC enrichment by minzelo</p>
+        <button class="report-bug-btn" id="report-bug-header-btn">Report Bug 🐞</button>
     </div>
     <div id="drawer-backdrop"></div>
     <div class="fixed-app-header-spacer"></div>

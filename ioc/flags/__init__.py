@@ -21,6 +21,7 @@ from .hybrid_analysis import _flags_hybrid_analysis
 from .dnsdumpster import _flags_dnsdumpster
 from .multisource import _flags_multisource
 from .mxtoolbox import _flags_mxtoolbox
+from .ransomware_live import _flags_ransomware_live
 
 
 def extract_ioc_flags(
@@ -35,6 +36,7 @@ def extract_ioc_flags(
     dnsd: dict,
     ha: dict,
     mx: dict | None = None,
+    rl: dict | None = None,
 ) -> list[dict]:
     """
     Extract all threat flags for a single IOC from all provider results.
@@ -53,6 +55,7 @@ def extract_ioc_flags(
     flags.extend(_flags_dnsdumpster(dnsd))
     flags.extend(_flags_multisource(vt, us, ab, tf, mb, ha))
     flags.extend(_flags_mxtoolbox(mx or {}))
+    flags.extend(_flags_ransomware_live(rl or {}))
 
     # Deduplicate by id
     seen_ids: set[str] = set()
@@ -140,7 +143,7 @@ def flags_summary_for_evidence(flags: list[dict]) -> dict:
             ev["privilege_escalation"] = True
         if any(k in fid for k in ("MALWARE_DOWNLOAD", "DOWNLOAD_SERVED")):
             ev["malware_executed"] = True
-        if any(k in fid for k in ("RANSOMWARE",)):
+        if any(k in fid for k in ("RANSOMWARE", "RL_VICTIM", "RL_RECENT")):
             ev["service_disruption_or_encryption"] = True
 
     return {

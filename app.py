@@ -19,6 +19,7 @@ from ui.components.output_renderer import render_results_output
 from ui.components.ioc_card import render_ioc_cards
 from ui.components.ai_panel import render_ai_panel
 from ui.components.cve_panel import render_cve_panel
+from ui.components.bug_report import render_bug_report_button
 
 st.set_page_config(
     page_title="IOC Router",
@@ -28,6 +29,8 @@ st.set_page_config(
 )
 
 st.markdown(GLOBAL_CSS_AND_HEADER, unsafe_allow_html=True)
+
+render_bug_report_button()
 
 # JavaScript drawer controller — runs in a zero-height iframe so it
 # actually executes (React blocks <script> injected via innerHTML).
@@ -81,12 +84,39 @@ components.html(
             }
         }
 
+        function attachReportBtn() {
+            var headerBtn = pd.getElementById('report-bug-header-btn');
+            if (headerBtn && !headerBtn._rbReady) {
+                headerBtn._rbReady = true;
+                headerBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    // Find and click the hidden Streamlit trigger button
+                    var stBtns = pd.querySelectorAll('[data-testid="stButton"] button');
+                    stBtns.forEach(function(b) {
+                        if (b.textContent.trim() === 'Report Bug 🐞') {
+                            b.click();
+                        }
+                    });
+                });
+            }
+            // Hide the Streamlit trigger button (replaced by the header HTML button)
+            pd.querySelectorAll('[data-testid="stButton"] button').forEach(function(b) {
+                if (b.textContent.trim() === 'Report Bug 🐞') {
+                    var wrapper = b.closest('[data-testid="stButton"]');
+                    if (wrapper && wrapper.parentElement) {
+                        wrapper.parentElement.style.setProperty('display', 'none', 'important');
+                    }
+                }
+            });
+        }
+
         function init(tries) {
             var sb = pd.querySelector('section[data-testid="stSidebar"]');
             if (sb) {
                 pw._applyDrawer(pw._drawerOpen);
                 attachBurger();
                 attachBackdrop();
+                attachReportBtn();
             } else if (tries < 50) {
                 setTimeout(function() { init(tries + 1); }, 100);
             }
@@ -100,6 +130,7 @@ components.html(
             _t = setTimeout(function() {
                 attachBurger();
                 attachBackdrop();
+                attachReportBtn();
                 var sb = pd.querySelector('section[data-testid="stSidebar"]');
                 if (sb) {
                     var want = pw._drawerOpen ? 'translateX(0px)' : 'translateX(-300px)';

@@ -50,6 +50,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
     dnsd_results = run_results.get("dnsd", {})
     ha_results = run_results.get("ha", {})
     mxtoolbox_results = run_results.get("mxtoolbox", {})
+    ransomware_live_results = run_results.get("ransomware_live", {})
 
     st.subheader("AI-Output")
     if not settings.gemini_key:
@@ -141,6 +142,9 @@ def render_ai_panel(run_results: dict, settings) -> None:
                 or (ha.get("network_ioc") or {}).get("ips")
                 or any((ha.get("behavior") or {}).values())
             )
+        if provider_name == "ransomware_live":
+            rl = ransomware_live_results.get(value, {}) or {}
+            return bool(rl and not rl.get("error") and rl.get("count", 0) > 0)
         return False
 
     def _build_ioc_links(selected_values: list[str]) -> str:
@@ -266,6 +270,16 @@ def render_ai_panel(run_results: dict, settings) -> None:
             if _mx_entry and not _mx_entry.get("error"):
                 _mx_clip = {"verdict": _mx_entry.get("verdict"), "total_failed": _mx_entry.get("total_failed"), "total_warnings": _mx_entry.get("total_warnings")}
                 lines.append(f"  MxToolBox: {_clip(_mx_clip)}")
+            _rl_entry = ransomware_live_results.get(ioc.value, {})
+            if _rl_entry and not _rl_entry.get("error") and _rl_entry.get("count", 0) > 0:
+                _rl_victims = (_rl_entry.get("victims") or [])[:2]
+                _rl_groups = list(dict.fromkeys(str(v.get("group_name") or "") for v in _rl_victims if v.get("group_name")))
+                _rl_clip = {
+                    "count": _rl_entry.get("count"),
+                    "groups": _rl_groups,
+                    "recent": [{"title": v.get("post_title"), "discovered": v.get("discovered")} for v in _rl_victims],
+                }
+                lines.append(f"  Ransomware.live: {_clip(_rl_clip)}")
             # Inject structured threat flags as additional context
             _ioc_flags = extract_ioc_flags(
                 ioc.value, ioc.type,
@@ -278,6 +292,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
                 dnsd_results.get(ioc.value, {}) or {},
                 ha_results.get(ioc.value, {}) or {},
                 mxtoolbox_results.get(ioc.value, {}) or {},
+                ransomware_live_results.get(ioc.value, {}) or {},
             )
             if _ioc_flags:
                 lines.append(f"  Threat Flags:\n{flags_to_ai_context(_ioc_flags)}")
@@ -351,10 +366,11 @@ def render_ai_panel(run_results: dict, settings) -> None:
             dnsd = dnsd_results.get(ioc.value, {}) or {}
             ha   = ha_results.get(ioc.value, {}) or {}
             mx   = mxtoolbox_results.get(ioc.value, {}) or {}
+            rl   = ransomware_live_results.get(ioc.value, {}) or {}
 
             # --- Derive evidence from flags ---
             ioc_flags = extract_ioc_flags(
-                ioc.value, ioc.type, _vt, us, ab, tf, mb, sh, dnsd, ha, mx
+                ioc.value, ioc.type, _vt, us, ab, tf, mb, sh, dnsd, ha, mx, rl
             )
             flag_summary = flags_summary_for_evidence(ioc_flags)
             for k, v in flag_summary["evidence"].items():
@@ -885,6 +901,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
                     dnsd_results.get(_ioc.value, {}) or {},
                     ha_results.get(_ioc.value, {}) or {},
                     mxtoolbox_results.get(_ioc.value, {}) or {},
+                    ransomware_live_results.get(_ioc.value, {}) or {},
                 ))
             # Deduplicate
             _seen_fids: set[str] = set()
@@ -999,6 +1016,16 @@ def render_ai_panel(run_results: dict, settings) -> None:
                 _ab_score = _ab_i.get("abuseConfidenceScore")
                 if _ab_score is not None and int(_ab_score) >= 25:
                     _ke_rows.append((_ioc.value, "Abuse Confidence", f"{_ab_score}%"))
+
+                # Ransomware.live victim count + group
+                _rl_i = ransomware_live_results.get(_ioc.value, {}) or {}
+                _rl_count = _rl_i.get("count") or 0
+                if _rl_count > 0:
+                    _rl_groups = list(dict.fromkeys(
+                        str(v.get("group_name") or "") for v in (_rl_i.get("victims") or []) if v.get("group_name")
+                    ))
+                    _rl_label = _rl_groups[0] if _rl_groups else f"{_rl_count} record(s)"
+                    _ke_rows.append((_ioc.value, "Ransomware Group", _rl_label))
 
             if _ke_rows:
                 st.divider()
