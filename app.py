@@ -10,7 +10,7 @@ from ioc.verdict import summarize_results
 from core.cache import (
     vt_cached, urlscan_cached, abuse_cached, tf_cached,
     mb_cached, shodan_cached, dnsd_cached, ha_cached, mxtoolbox_cached,
-    whoxy_cached,
+    whoxy_cached, ransomware_live_cached,
     CACHE_REV,
 )
 from ui.styles import GLOBAL_CSS_AND_HEADER, LANDING_CSS
@@ -125,7 +125,8 @@ settings = Settings.from_env()
 
 # ── API-key drawer: session state init ───────────────────────────────────────
 for _k in ["sk_gemini", "sk_grok", "sk_vt", "sk_urlscan", "sk_abuse",
-           "sk_threatfox", "sk_mb", "sk_shodan", "sk_dnsd", "sk_ha", "sk_mxtoolbox", "sk_whoxy"]:
+           "sk_threatfox", "sk_mb", "sk_shodan", "sk_dnsd", "sk_ha", "sk_mxtoolbox", "sk_whoxy",
+           "sk_ransomware_live"]:
     if _k not in st.session_state:
         st.session_state[_k] = ""
 
@@ -147,6 +148,7 @@ settings.dnsdumpster_key = _sk("sk_dnsd") or settings.dnsdumpster_key
 settings.hybrid_analysis_key = _sk("sk_ha") or settings.hybrid_analysis_key
 settings.mxtoolbox_key = _sk("sk_mxtoolbox") or settings.mxtoolbox_key
 settings.whoxy_key = _sk("sk_whoxy") or settings.whoxy_key
+settings.ransomware_live_key = _sk("sk_ransomware_live") or settings.ransomware_live_key
 settings.gemini_key = _sk("sk_gemini") or settings.gemini_key
 settings.groq_key = _sk("sk_grok") or settings.groq_key
 
@@ -196,6 +198,7 @@ host: str = st.session_state.get("host", "")
 host_ip: str = st.session_state.get("host_ip", "")
 time_detected: str = st.session_state.get("time_detected", "")
 device_action: str = st.session_state.get("device_action", "")
+device_action_others: str = st.session_state.get("device_action_others", "")
 parent_process: str = st.session_state.get("parent_process", "")
 child_process: str = st.session_state.get("child_process", "")
 
@@ -204,12 +207,14 @@ if st.session_state.get("reset_input"):
     st.session_state["ioc_input"] = ""
     st.session_state["raw_log"] = ""
     st.session_state["device_action"] = ""
+    st.session_state["device_action_others"] = ""
     st.session_state["parent_process"] = ""
     st.session_state["child_process"] = ""
     st.session_state["reset_input"] = False
     raw = ""
     raw_log = ""
     device_action = ""
+    device_action_others = ""
     parent_process = ""
     child_process = ""
 
@@ -312,7 +317,7 @@ if not _has_results:
                 with _it2:
                     st.checkbox("Domain / URL", value=True, key="ioc_type_domain")
                     st.checkbox("Email", value=True, key="ioc_type_email")
-                    st.checkbox("Whois Keyword", value=True, key="ioc_type_whois")
+                    st.checkbox("Keyword", value=True, key="ioc_type_whois")
 
         # Providers section — shown between card and Options when Auto Provider is off
         if not st.session_state.get("auto_choose_provider", True):
@@ -324,6 +329,7 @@ if not _has_results:
                     st.checkbox("ThreatFox", value=True, key="provider_tf")
                     st.checkbox("MalwareBazaar", value=True, key="provider_mb")
                     st.checkbox("MxToolBox", value=True, key="provider_mxtoolbox")
+                    st.checkbox("Ransomware Live", value=True, key="provider_ransomware_live")
                 with _pv2:
                     st.checkbox("urlscan", value=True, key="provider_urlscan")
                     st.checkbox("Shodan", value=True, key="provider_shodan")
@@ -357,7 +363,7 @@ if not _has_results:
             with _proc[0]:
                 device_action = st.selectbox(
                     "Device Action",
-                    ["None", "Blocked", "Isolated", "Prevented", "Allowed", "Detected"],
+                    ["None", "Blocked", "Isolated", "Prevented", "Allowed", "Detected", "File Cleaned", "Others"],
                     key="device_action",
                 )
             with _proc[1]:
@@ -367,6 +373,12 @@ if not _has_results:
             with _proc[2]:
                 child_process = st.text_input(
                     "Child Process", placeholder="e.g. cmd.exe", key="child_process"
+                )
+            if device_action == "Others":
+                device_action_others = st.text_input(
+                    "Specify Action",
+                    placeholder="e.g. Terminated, Logged, Alerted...",
+                    key="device_action_others",
                 )
 
             raw_log = st.text_area(
@@ -448,7 +460,7 @@ else:
         with _sp_proc[0]:
             device_action = st.selectbox(
                 "Device Action",
-                ["None", "Blocked", "Isolated", "Prevented", "Allowed", "Detected"],
+                ["None", "Blocked", "Isolated", "Prevented", "Allowed", "Detected", "File Cleaned", "Others"],
                 key="device_action",
             )
         with _sp_proc[1]:
@@ -458,6 +470,12 @@ else:
         with _sp_proc[2]:
             child_process = st.text_input(
                 "Child Process", placeholder="e.g. cmd.exe", key="child_process"
+            )
+        if device_action == "Others":
+            device_action_others = st.text_input(
+                "Specify Action",
+                placeholder="e.g. Terminated, Logged, Alerted...",
+                key="device_action_others",
             )
 
         col_chk = st.columns(4)
@@ -498,7 +516,7 @@ else:
                 with _sit2:
                     st.checkbox("Domain / URL", value=True, key="ioc_type_domain")
                     st.checkbox("Email", value=True, key="ioc_type_email")
-                    st.checkbox("Whois Keyword", value=True, key="ioc_type_whois")
+                    st.checkbox("Keyword", value=True, key="ioc_type_whois")
 
         if not auto_choose_provider:
             with st.expander("Providers", expanded=False):
@@ -509,6 +527,7 @@ else:
                     st.checkbox("ThreatFox", value=True, key="provider_tf")
                     st.checkbox("MalwareBazaar", value=True, key="provider_mb")
                     st.checkbox("MxToolBox", value=True, key="provider_mxtoolbox")
+                    st.checkbox("Ransomware Live", value=True, key="provider_ransomware_live")
                 with _sp2:
                     st.checkbox("urlscan", value=True, key="provider_urlscan")
                     st.checkbox("Shodan", value=True, key="provider_shodan")
@@ -581,7 +600,8 @@ def _auto_provider_flags(items: list[IOC], settings_obj: Settings) -> dict[str, 
         "dns":       bool(settings_obj.dnsdumpster_key)       and bool(types & {"domain", "url"}),
         "ha":        bool(settings_obj.hybrid_analysis_key)   and bool(types & {"ip", "domain", "url", "hash"}),
         "mxtoolbox": bool(settings_obj.mxtoolbox_key)         and bool(types & {"ip", "domain", "url", "email"}),
-        "whoxy":     bool(settings_obj.whoxy_key)             and bool(types & {"domain", "url", "whois"}),
+        "whoxy":          bool(settings_obj.whoxy_key)             and bool(types & {"domain", "url", "whois"}),
+        "ransomware_live": bool(settings_obj.ransomware_live_key)  and bool(types & {"domain", "url", "whois"}),
     }
 
 
@@ -607,8 +627,9 @@ with split_right:
                     "shodan":    bool(st.session_state.get("provider_shodan")),
                     "dns":       bool(st.session_state.get("provider_dns")),
                     "ha":        bool(st.session_state.get("provider_ha")),
-                    "mxtoolbox": bool(st.session_state.get("provider_mxtoolbox")),
-                    "whoxy":     bool(st.session_state.get("provider_whoxy")),
+                    "mxtoolbox":      bool(st.session_state.get("provider_mxtoolbox")),
+                    "whoxy":          bool(st.session_state.get("provider_whoxy")),
+                    "ransomware_live": bool(st.session_state.get("provider_ransomware_live")),
                 }
             )
 
@@ -626,6 +647,11 @@ with split_right:
             ha_results = ha_cached(ioc_payload, settings.hybrid_analysis_key, CACHE_REV) if provider_flags["ha"] else {}
             mxtoolbox_results = mxtoolbox_cached(ioc_payload, settings.mxtoolbox_key, CACHE_REV) if provider_flags.get("mxtoolbox") else {}
             whoxy_results = whoxy_cached(ioc_payload, settings.whoxy_key, CACHE_REV) if provider_flags.get("whoxy") else {}
+            ransomware_live_results = (
+                ransomware_live_cached(ioc_payload, settings.ransomware_live_key, CACHE_REV)
+                if provider_flags.get("ransomware_live")
+                else {}
+            )
             summary, rows = summarize_results(
                 items,
                 vt_results,
@@ -648,6 +674,7 @@ with split_right:
                 "ha": ha_results,
                 "mxtoolbox": mxtoolbox_results,
                 "whoxy": whoxy_results,
+                "ransomware_live": ransomware_live_results,
                 "provider_flags": provider_flags,
             }
             if _was_landing:

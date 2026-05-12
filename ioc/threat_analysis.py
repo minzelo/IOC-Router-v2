@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 
-PREVENTION_ACTIONS = {"blocked", "isolated", "prevented", "quarantined", "denied", "terminated"}
+PREVENTION_ACTIONS = {"blocked", "isolated", "prevented", "quarantined", "denied", "terminated", "file cleaned"}
 
 VERDICT_TRUE_POSITIVE_STATES = {"Compromise", "Privilege Escalation", "Lateral Movement", "Persistence", "Impact"}
 VERDICT_TRUE_POSITIVE_LEVELS = {"High", "Very High"}

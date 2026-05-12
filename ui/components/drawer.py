@@ -53,12 +53,15 @@ def render_api_drawer() -> None:
                       key="sk_mxtoolbox", label_visibility="visible")
         st.text_input("Whoxy", type="password", placeholder="Whoxy API key",
                       key="sk_whoxy", label_visibility="visible")
+        st.text_input("Ransomware Live", type="password", placeholder="RL API key",
+                      key="sk_ransomware_live", label_visibility="visible")
 
         st.divider()
 
         if st.button("🗑 Clear all", use_container_width=True, key="__drawer_clear__"):
             for _k in ["sk_gemini", "sk_grok", "sk_vt", "sk_urlscan", "sk_abuse",
-                       "sk_threatfox", "sk_mb", "sk_shodan", "sk_dnsd", "sk_ha", "sk_mxtoolbox", "sk_whoxy"]:
+                       "sk_threatfox", "sk_mb", "sk_shodan", "sk_dnsd", "sk_ha", "sk_mxtoolbox", "sk_whoxy",
+                       "sk_ransomware_live"]:
                 if _k in st.session_state:
                     del st.session_state[_k]
             st.rerun()

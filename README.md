@@ -6,7 +6,7 @@
 ![AI Powered](https://img.shields.io/badge/AI_Powered-Gemini_%2B_Groq-blue)
 [![Live Demo](https://img.shields.io/badge/Live_Demo-minzelo--ioc--analyzer-FF4B4B?style=flat&logo=streamlit&logoColor=white)](https://minzelo-ioc-analyzer.streamlit.app)
 
-IOC Router is a multi-source threat intelligence platform built for SOC analysts. Paste one or more suspicious indicators — IPs, domains, URLs, file hashes, emails, or bare WHOIS keywords — and get an enriched verdict aggregated from up to 10 threat intel providers, complete with severity-rated flags, MITRE ATT&CK mappings, geolocation, and an AI-generated incident ticket.
+IOC Router is a multi-source threat intelligence platform built for SOC analysts. Paste one or more suspicious indicators — IPs, domains, URLs, file hashes, emails, or bare keywords — and get an enriched verdict aggregated from up to 10 threat intel providers, complete with severity-rated flags, MITRE ATT&CK mappings, geolocation, and an AI-generated incident ticket.
 
 Access from: [https://ioc-router.streamlit.app](https://ioc-router.streamlit.app)
 
@@ -28,7 +28,7 @@ Queries up to 10 threat intelligence providers simultaneously — VirusTotal, UR
 
 ### 2. IOC Type Auto-detection
 
-Automatically identifies and routes each indicator to the relevant providers — supports IPv4/IPv6, domain, URL, file hash (MD5/SHA1/SHA256), email, and WHOIS keywords. When **Auto-detect** and **Auto Provider** are enabled, mixed IOC types can be submitted together in one batch and the system handles classification and routing without manual configuration.
+Automatically identifies and routes each indicator to the relevant providers — supports IPv4/IPv6, domain, URL, file hash (MD5/SHA1/SHA256), email, and keywords. When **Auto-detect** and **Auto Provider** are enabled, mixed IOC types can be submitted together in one batch and the system handles classification and routing without manual configuration.
 
 <p align="center">
   <img src="image/Multiple diffrent IOC with Auto IOC detector and Auto Provider choose.jpeg" width="55%">
@@ -115,7 +115,7 @@ Results can be exported in four formats selectable from the Options panel — **
 | URL | `http://phishing.example.com/login` |
 | File Hash | MD5, SHA1, SHA256 |
 | Email | `attacker@domain.com` |
-| WHOIS Keyword | `evilcorp` — triggers Whoxy reverse WHOIS by keyword |
+| Keyword | `evilcorp` — triggers Whoxy reverse WHOIS by keyword |
 
 ---
 
@@ -132,7 +132,7 @@ Results can be exported in four formats selectable from the Options panel — **
 | [**DNSDumpster**](docs/dnsdumpster.md) | Domain, URL | Subdomains, A/MX/NS records, SPF configuration |
 | [**Hybrid Analysis**](docs/hybrid_analysis.md) | IP, Domain, URL, Hash | Sandbox verdict, threat score, malware family, network IOCs, MITRE behavior |
 | [**MxToolBox**](docs/mxtoolbox.md) | IP, Domain, URL, Email | Blacklist checks, PTR/MX/DNS/SPF/DMARC lookups, HTTP reachability, mail security posture |
-| [**Whoxy**](docs/whoxy.md) | Domain, URL, WHOIS Keyword | WHOIS registration data, registrant email/company, reverse WHOIS by registrant or keyword |
+| [**Whoxy**](docs/whoxy.md) | Domain, URL, Keyword | WHOIS registration data, registrant email/company, reverse WHOIS by registrant or keyword |
 
 ---
 

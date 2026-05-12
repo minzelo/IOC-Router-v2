@@ -41,7 +41,10 @@
       "Bash(Select-Object FullName, PSIsContainer)",
       "Bash(Sort-Object FullName)",
       "WebFetch(domain:nvd.nist.gov)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:api-pro.ransomware.live)",
+      "Bash(Get-ChildItem -Force)",
+      "Bash(Select-Object Name, PSIsContainer)"
     ]
   }
 }

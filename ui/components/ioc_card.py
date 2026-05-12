@@ -150,6 +150,7 @@ def render_ioc_cards(run_results: dict) -> None:
     ha_results = run_results.get("ha", {})
     mxtoolbox_results = run_results.get("mxtoolbox", {})
     whoxy_results = run_results.get("whoxy", {})
+    ransomware_live_results = run_results.get("ransomware_live", {})
 
     def _urlscan_screenshot_url(us: dict) -> str:
         if not us:
@@ -188,6 +189,7 @@ def render_ioc_cards(run_results: dict) -> None:
             ha = ha_results.get(ioc.value, {})
             mx = mxtoolbox_results.get(ioc.value, {})
             wx = whoxy_results.get(ioc.value, {})
+            rl = ransomware_live_results.get(ioc.value, {})
 
             # ── Geolocation: resolve target IP ─────────────────────────────
             _geo_target_ip: str | None = None
@@ -261,6 +263,12 @@ def render_ioc_cards(run_results: dict) -> None:
                 )
             )
 
+            _rl_has = bool(
+                rl
+                and not rl.get("error")
+                and rl.get("count", 0) > 0
+            )
+
             _active_tabs = []
             if _vt_has: _active_tabs.append("VirusTotal")
             if _us_has: _active_tabs.append("urlscan")
@@ -272,6 +280,7 @@ def render_ioc_cards(run_results: dict) -> None:
             if _ha_has: _active_tabs.append("Hybrid Analysis")
             if _mx_has: _active_tabs.append("MxToolBox")
             if _wx_has: _active_tabs.append("Whoxy")
+            if _rl_has: _active_tabs.append("Ransomware Live")
 
             _ti = {}
             if not _active_tabs:
@@ -1581,3 +1590,114 @@ def render_ioc_cards(run_results: dict) -> None:
                         st.divider()
                         st.markdown("**Reverse WHOIS — Related Domains**")
                         _wx_render_domains(_wx_rev, domain_color="#90c8f8")
+
+            # ── Ransomware Live tab ────────────────────────────────────────
+            if "Ransomware Live" in _ti:
+                with _ti["Ransomware Live"]:
+                    _rl_full = rl.get("full_domain") or ioc.value
+                    _rl_sld = rl.get("sld") or ""
+                    _rl_queries = rl.get("queries") or [_rl_full]
+                    _rl_count = rl.get("count", 0)
+                    _rl_victims = rl.get("victims") or []
+
+                    _rl_query_badges = " &nbsp;+&nbsp; ".join(
+                        f"<code>{q}</code>" for q in _rl_queries
+                    )
+                    st.markdown(
+                        f"<div style='margin-bottom:10px;'>"
+                        f"<span style='background:#3b0f0f;color:#f87171;"
+                        f"padding:3px 10px;border-radius:4px;font-size:0.9em;"
+                        f"font-weight:600;'>RANSOMWARE LIVE</span>"
+                        f"&nbsp;<span style='color:#8b95a8;font-size:0.85em;'>queries: "
+                        f"{_rl_query_badges}</span></div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f"<span style='color:#8b95a8;font-size:0.82rem;'>"
+                        f"Found <strong style='color:#f87171;'>{_rl_count}</strong> victim record(s)</span>",
+                        unsafe_allow_html=True,
+                    )
+
+                    for _v in _rl_victims:
+                        _v_title = _v.get("post_title") or "Unknown"
+                        _v_group = _v.get("group_name") or "—"
+                        _v_site = _v.get("website") or ""
+                        _v_country = _v.get("country") or ""
+                        _v_sector = _v.get("activity") or ""
+                        _v_discovered = (_v.get("discovered") or "")[:10]
+                        _v_published = (_v.get("published") or "")[:10]
+                        _v_desc = _v.get("description") or ""
+                        _v_permalink = _v.get("permalink") or ""
+                        _v_screenshot = _v.get("screenshot") or ""
+                        _v_post_url = _v.get("post_url") or ""
+                        _v_ransom = _v.get("ransom")
+                        _v_data_size = _v.get("data_size")
+
+                        st.markdown("<hr style='border:none;border-top:1px solid #2d2d2d;margin:12px 0;'>", unsafe_allow_html=True)
+
+                        _header_parts = [f"<strong style='color:#f5f7fb;font-size:0.95rem;'>{_v_title}</strong>"]
+                        if _v_group:
+                            _header_parts.append(
+                                f"<span style='background:#4b0000;color:#fca5a5;"
+                                f"padding:2px 8px;border-radius:4px;font-size:0.78rem;"
+                                f"margin-left:8px;'>{_v_group}</span>"
+                            )
+                        if _v_country:
+                            _header_parts.append(
+                                f"<span style='background:#1e293b;color:#94a3b8;"
+                                f"padding:2px 8px;border-radius:4px;font-size:0.78rem;"
+                                f"margin-left:4px;'>{_v_country}</span>"
+                            )
+                        st.markdown("".join(_header_parts), unsafe_allow_html=True)
+
+                        _meta_rows = []
+                        if _v_site:
+                            _meta_rows.append(("Website", _v_site))
+                        if _v_sector and _v_sector != "Not Found":
+                            _meta_rows.append(("Sector", _v_sector))
+                        if _v_discovered:
+                            _meta_rows.append(("Discovered", _v_discovered))
+                        if _v_published:
+                            _meta_rows.append(("Published", _v_published))
+                        if _v_ransom is not None:
+                            _meta_rows.append(("Ransom", f"${_v_ransom:,}" if isinstance(_v_ransom, (int, float)) else str(_v_ransom)))
+                        if _v_data_size:
+                            _meta_rows.append(("Data Size", str(_v_data_size)))
+
+                        if _meta_rows:
+                            _meta_html = "".join(
+                                f"<tr>"
+                                f"<td style='padding:4px 12px;color:#8b95a8;font-size:0.81rem;"
+                                f"white-space:nowrap;font-weight:600;'>{_lbl}</td>"
+                                f"<td style='padding:4px 12px;color:#e2e6f0;font-family:"
+                                f"JetBrains Mono,monospace;font-size:0.81rem;'>{_val}</td>"
+                                f"</tr>"
+                                for _lbl, _val in _meta_rows
+                            )
+                            st.markdown(
+                                "<div style='overflow-x:auto;margin:6px 0 8px 0;'>"
+                                "<table style='border-collapse:collapse;width:100%;font-size:0.85rem;"
+                                "border:1px solid #2d2d2d;border-radius:6px;overflow:hidden;'>"
+                                f"<tbody>{_meta_html}</tbody></table></div>",
+                                unsafe_allow_html=True,
+                            )
+
+                        if _v_desc:
+                            _desc_clean = _v_desc.replace("[AI generated] ", "")
+                            st.markdown(
+                                f"<p style='color:#9ca3af;font-size:0.82rem;margin:4px 0 6px 0;"
+                                f"line-height:1.5;'>{_desc_clean}</p>",
+                                unsafe_allow_html=True,
+                            )
+
+                        _link_parts = []
+                        if _v_permalink:
+                            _link_parts.append(f"<a href='{_v_permalink}' target='_blank' style='color:#f87171;font-size:0.82rem;'>🔗 Ransomware.live</a>")
+                        if _v_post_url:
+                            _link_parts.append(f"<a href='{_v_post_url}' target='_blank' style='color:#8b95a8;font-size:0.82rem;'>📄 Original Post</a>")
+                        if _link_parts:
+                            st.markdown(" &nbsp;·&nbsp; ".join(_link_parts), unsafe_allow_html=True)
+
+                        if _v_screenshot:
+                            with st.expander("Screenshot"):
+                                st.image(_v_screenshot, use_container_width=True)

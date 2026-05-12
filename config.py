@@ -27,6 +27,7 @@ class Settings:
     groq_key: str | None = None
     mxtoolbox_key: str | None = None
     whoxy_key: str | None = None
+    ransomware_live_key: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -48,4 +49,5 @@ class Settings:
             groq_key=os.getenv("GROQ_KEY"),
             mxtoolbox_key=os.getenv("MXTOOLBOX_KEY"),
             whoxy_key=os.getenv("WHOXY_KEY"),
+            ransomware_live_key=os.getenv("RANSOMWARE_LIVE_KEY"),
         )

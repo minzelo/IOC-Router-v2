@@ -16,6 +16,16 @@ from providers.groq import groq_generate
 from core.geo import fetch_geo_ip_api, fetch_nominatim
 
 
+def _get_effective_device_action() -> str:
+    """Return the effective device action value, resolving 'Others' to the custom text input."""
+    action = (st.session_state.get("device_action") or "").strip()
+    if action in ("", "None"):
+        return ""
+    if action == "Others":
+        return (st.session_state.get("device_action_others") or "").strip()
+    return action
+
+
 def _clear_ai_outputs() -> None:
     """Clear all AI-generated session state outputs."""
     for _k in ("ai_short", "ai_desc", "ai_threat_analysis", "ai_ioc_links"):
@@ -211,7 +221,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
         if sanitize:
             lines.append("Sanitize sensitive data where possible.")
         # Shared process/action context — always included when values are present
-        _ctx_device_action = "" if (st.session_state.get("device_action") or "") in ("", "None") else (st.session_state.get("device_action") or "")
+        _ctx_device_action = _get_effective_device_action()
         _ctx_parent = st.session_state.get("parent_process") or ""
         _ctx_child = st.session_state.get("child_process") or ""
         _has_process_ctx = bool(_ctx_device_action or _ctx_parent or _ctx_child)
@@ -389,7 +399,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
             "mitre_tactics": sorted(tactics),
             "risk_notes": notes[:8],
             "asset_criticality": "critical" if st.session_state.get("critical_asset") else "standard",
-            "device_action": "" if (st.session_state.get("device_action", "") or "") in ("", "None") else st.session_state.get("device_action", ""),
+            "device_action": _get_effective_device_action(),
         }
 
     def _to_bold_unicode(text: str) -> str:
@@ -615,7 +625,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
         _emoji_map = {"Low": "🟢", "Medium": "🟡", "High": "🟠", "Very High": "🔴"}
         _verdict_emoji = {"False Positive": "🟢", "Benign Positive": "🟠", "True Positive": "🔴"}
         lines.append("--- THREAT ANALYSIS ---")
-        _da = st.session_state.get("device_action", "")
+        _da = _get_effective_device_action()
         if _da:
             lines.append(f"Device Action : {_da}")
         lines.append(f"Threat State : {_ta_state}")

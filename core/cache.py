@@ -15,8 +15,9 @@ from providers.dnsdumpster import dnsdumpster_lookup_batch
 from providers.hybrid_analysis import hybrid_analysis_lookup_batch
 from providers.mxtoolbox import mxtoolbox_lookup_batch
 from providers.whoxy import whoxy_lookup_batch
+from providers.ransomware_live import ransomware_live_lookup_batch
 
-CACHE_REV = "providers-v11"
+CACHE_REV = "providers-v12"
 
 
 def _inflate(payload: list) -> list[IOC]:
@@ -75,3 +76,10 @@ def mxtoolbox_cached(payload: list, mxtoolbox_key: str, cache_rev: str) -> dict:
 @st.cache_data(ttl=86400)
 def whoxy_cached(payload: list, whoxy_key: str, cache_rev: str) -> dict:
     return whoxy_lookup_batch(_inflate(payload), Settings(whoxy_key=whoxy_key))
+
+
+@st.cache_data(ttl=86400)
+def ransomware_live_cached(payload: list, ransomware_live_key: str, cache_rev: str) -> dict:
+    return ransomware_live_lookup_batch(
+        _inflate(payload), Settings(ransomware_live_key=ransomware_live_key)
+    )

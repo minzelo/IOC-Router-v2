@@ -25,6 +25,7 @@ def render_results_output(output_format: str, run_results: dict) -> None:
     dnsd_results = run_results.get("dnsd", {})
     mxtoolbox_results = run_results.get("mxtoolbox", {})
     whoxy_results = run_results.get("whoxy", {})
+    ransomware_live_results = run_results.get("ransomware_live", {})
 
     col_sum = st.columns(5)
     col_sum[0].metric("Total", summary["total"])
@@ -220,6 +221,22 @@ def render_results_output(output_format: str, run_results: dict) -> None:
             geo = f" ({country})" if country else ""
             return f"DNSDumpster: {ip_count} IP(s), e.g. {first_ip}{geo}{flag_str}"
 
+        def _rl_line(val: str) -> str:
+            rl = ransomware_live_results.get(val, {})
+            if not rl or rl.get("error"):
+                return "Ransomware Live: No data"
+            count = rl.get("count", 0)
+            if count == 0:
+                return "Ransomware Live: No victims found"
+            victims = rl.get("victims") or []
+            groups = list({v.get("group_name") for v in victims if v.get("group_name")})
+            group_str = ", ".join(groups[:3]) + ("…" if len(groups) > 3 else "")
+            queries = rl.get("queries") or []
+            q_str = " + ".join(f'"{q}"' for q in queries) if queries else val
+            if groups:
+                return f"Ransomware Live: {count} victim(s) matched [{q_str}] — group(s): {group_str}"
+            return f"Ransomware Live: {count} victim(s) matched [{q_str}]"
+
         def _indicator_conclusion(verdict: str) -> str:
             if verdict == "Malicious":
                 return "Confirmed phishing"
@@ -258,24 +275,26 @@ def render_results_output(output_format: str, run_results: dict) -> None:
             elif t == "domain":
                 notes.append("#Domain")
                 notes.append(f"Domain: {val}")
-                _add(notes, "urlscan",   _urlscan_line(val))
-                _add(notes, "vt",        _vt_line(val))
-                _add(notes, "tf",        _tf_line(val))
-                _add(notes, "ha",        _ha_line(val))
-                _add(notes, "dns",       _dd_line(val))
-                _add(notes, "mxtoolbox", _mx_line(val))
-                _add(notes, "whoxy",     _whoxy_line(val))
+                _add(notes, "urlscan",        _urlscan_line(val))
+                _add(notes, "vt",             _vt_line(val))
+                _add(notes, "tf",             _tf_line(val))
+                _add(notes, "ha",             _ha_line(val))
+                _add(notes, "dns",            _dd_line(val))
+                _add(notes, "mxtoolbox",      _mx_line(val))
+                _add(notes, "whoxy",          _whoxy_line(val))
+                _add(notes, "ransomware_live", _rl_line(val))
                 notes.append("Conclusion: " + _indicator_conclusion(verdict))
             elif t == "url":
                 notes.append("#URL")
                 notes.append(f"URL: {val}")
-                _add(notes, "urlscan",   _urlscan_line(val))
-                _add(notes, "vt",        _vt_line(val))
-                _add(notes, "tf",        _tf_line(val))
-                _add(notes, "ha",        _ha_line(val))
-                _add(notes, "dns",       _dd_line(val))
-                _add(notes, "mxtoolbox", _mx_line(val))
-                _add(notes, "whoxy",     _whoxy_line(val))
+                _add(notes, "urlscan",        _urlscan_line(val))
+                _add(notes, "vt",             _vt_line(val))
+                _add(notes, "tf",             _tf_line(val))
+                _add(notes, "ha",             _ha_line(val))
+                _add(notes, "dns",            _dd_line(val))
+                _add(notes, "mxtoolbox",      _mx_line(val))
+                _add(notes, "whoxy",          _whoxy_line(val))
+                _add(notes, "ransomware_live", _rl_line(val))
                 notes.append("Conclusion: " + _indicator_conclusion(verdict))
             elif t == "email":
                 notes.append("#Email")
@@ -288,7 +307,8 @@ def render_results_output(output_format: str, run_results: dict) -> None:
             elif t == "whois":
                 notes.append("#Whois Keyword")
                 notes.append(f"Keyword: {val}")
-                _add(notes, "whoxy", _whoxy_line(val))
+                _add(notes, "whoxy",           _whoxy_line(val))
+                _add(notes, "ransomware_live", _rl_line(val))
                 notes.append("Conclusion: " + _indicator_conclusion(verdict))
             notes.append("")
         notes_text = "\n".join(notes)
