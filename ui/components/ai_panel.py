@@ -1217,6 +1217,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
 
         # ── Description below (full width, with copy) ───────────────────
         shown_desc = desc_text if desc_text else ""
+        st.session_state["ai_description"] = shown_desc
         st.markdown("**IOC Description**")
         st.caption(f"~{len(shown_desc.split())} words" if shown_desc else "No description generated yet")
         st.text_area("", value=shown_desc, height=180, key="ai_description", label_visibility="collapsed")

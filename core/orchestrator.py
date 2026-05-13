@@ -34,8 +34,8 @@ def auto_provider_flags(items: list[IOC], settings_obj: Settings) -> dict[str, b
         "dns":    bool(settings_obj.dnsdumpster_key)       and bool(types & {"domain", "url"}),
         "ha":         bool(settings_obj.hybrid_analysis_key)   and bool(types & {"ip", "domain", "url", "hash"}),
         "mxtoolbox":       bool(settings_obj.mxtoolbox_key)          and bool(types & {"ip", "domain", "url", "email"}),
-        "whoxy":           bool(settings_obj.whoxy_key)              and bool(types & {"domain", "url", "whois"}),
-        "ransomware_live": bool(settings_obj.ransomware_live_key)    and bool(types & {"domain", "url", "whois"}),
+        "whoxy":           bool(settings_obj.whoxy_key)              and bool(types & {"whois"}),
+        "ransomware_live": bool(settings_obj.ransomware_live_key)    and bool(types & {"whois"}),
     }
 
 

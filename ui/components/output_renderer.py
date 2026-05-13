@@ -281,8 +281,6 @@ def render_results_output(output_format: str, run_results: dict) -> None:
                 _add(notes, "ha",             _ha_line(val))
                 _add(notes, "dns",            _dd_line(val))
                 _add(notes, "mxtoolbox",      _mx_line(val))
-                _add(notes, "whoxy",          _whoxy_line(val))
-                _add(notes, "ransomware_live", _rl_line(val))
                 notes.append("Conclusion: " + _indicator_conclusion(verdict))
             elif t == "url":
                 notes.append("#URL")
@@ -293,8 +291,6 @@ def render_results_output(output_format: str, run_results: dict) -> None:
                 _add(notes, "ha",             _ha_line(val))
                 _add(notes, "dns",            _dd_line(val))
                 _add(notes, "mxtoolbox",      _mx_line(val))
-                _add(notes, "whoxy",          _whoxy_line(val))
-                _add(notes, "ransomware_live", _rl_line(val))
                 notes.append("Conclusion: " + _indicator_conclusion(verdict))
             elif t == "email":
                 notes.append("#Email")

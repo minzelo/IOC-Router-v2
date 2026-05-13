@@ -65,22 +65,37 @@ GLOBAL_CSS_AND_HEADER = """
         height: 128px;
     }
 
-    @media (max-width: 640px) {
+    @media (max-width: 768px) {
         .fixed-app-header {
             padding-top: 2.15rem;
             padding-bottom: 1.2rem;
         }
 
         .fixed-app-header__title {
-            font-size: 1.75rem;
+            font-size: 1.55rem;
         }
 
         .fixed-app-header__subtitle {
-            font-size: 0.9rem;
+            font-size: 0.82rem;
+            left: 0;
         }
 
         .fixed-app-header-spacer {
-            height: -70px;
+            height: 100px;
+        }
+
+        /* Hide "Insert API Keys" text label — keep only the ☰ icon */
+        .drawer-burger::after {
+            display: none !important;
+        }
+
+        /* Mobile: show only emoji, hide text */
+        .report-bug-btn {
+            right: 0.75rem;
+            padding: 6px 10px;
+        }
+        .report-bug-text {
+            display: none;
         }
     }
 
@@ -308,7 +323,7 @@ GLOBAL_CSS_AND_HEADER = """
         <span class="drawer-burger" id="drawer-burger-btn">☰</span>
         <h1 class="fixed-app-header__title" onclick="window.location.reload();" style="cursor:pointer;" title="Back to home">🛡️ IOC Router 🛡️</h1>
         <p class="fixed-app-header__subtitle">IOC enrichment by minzelo</p>
-        <button class="report-bug-btn" id="report-bug-header-btn">Report Bug 🐞</button>
+        <button class="report-bug-btn" id="report-bug-header-btn"><span class="report-bug-text">Report Bug </span>🐞</button>
     </div>
     <div id="drawer-backdrop"></div>
     <div class="fixed-app-header-spacer"></div>

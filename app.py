@@ -162,10 +162,6 @@ for _k in ["sk_gemini", "sk_grok", "sk_vt", "sk_urlscan", "sk_abuse",
         st.session_state[_k] = ""
 
 for _k, _v in {
-    "provider_vt": False, "provider_urlscan": False, "provider_abuse": False,
-    "provider_tf": False, "provider_mb": False, "provider_shodan": False,
-    "provider_dns": False, "provider_ha": False, "provider_mxtoolbox": False,
-    "provider_whoxy": False, "provider_ransomware_live": False,
     "ioc_grp_ip": False, "ioc_grp_domain": False, "ioc_grp_hash": False,
     "ioc_grp_email": False, "ioc_grp_keyword": False,
     "auto_detect_and_provider": True,
@@ -284,7 +280,7 @@ _PROVIDER_LABELS: dict[str, str] = {
 _PROVIDER_DISABLED: set[str] = {"whoxy"}
 _GROUP_PROVIDERS: dict[str, list[str]] = {
     "ip":         ["vt", "abuse", "tf", "shodan", "ha", "mxtoolbox"],
-    "domain_url": ["vt", "urlscan", "abuse", "tf", "shodan", "dns", "ha", "mxtoolbox", "whoxy", "ransomware_live"],
+    "domain_url": ["vt", "urlscan", "abuse", "tf", "shodan", "dns", "ha", "mxtoolbox"],
     "hash":       ["vt", "tf", "mb", "ha"],
     "email":      ["mxtoolbox"],
     "keyword":    ["whoxy", "ransomware_live"],
@@ -308,13 +304,18 @@ for _g, _ps in _GROUP_PROVIDERS.items():
     for _p in _ps:
         _PROVIDER_TO_GROUPS.setdefault(_p, []).append(_g)
 
+_IOC_TYPE_TO_GROUP: dict[str, str] = {
+    "ip":     "ip",
+    "domain": "domain_url",
+    "url":    "domain_url",
+    "hash":   "hash",
+    "email":  "email",
+    "whois":  "keyword",
+}
+
 
 def _on_provider_toggle(p: str, group: str) -> None:
-    """Sync provider checkbox state across all IOC groups."""
-    val = st.session_state.get(f"prov_{p}_{group}", True)
-    st.session_state[f"provider_{p}"] = val
-    for g in _PROVIDER_TO_GROUPS[p]:
-        st.session_state[f"prov_{p}_{g}"] = val
+    """Each group's provider checkbox is independent — no cross-group sync."""
 
 
 def _on_ioc_group_toggle(group: str) -> None:
@@ -322,19 +323,16 @@ def _on_ioc_group_toggle(group: str) -> None:
     if st.session_state.get(_GROUP_IOC_KEY[group], True):
         for p in _GROUP_PROVIDERS[group]:
             if p not in _PROVIDER_DISABLED:
-                st.session_state[f"provider_{p}"] = True
-                for g in _PROVIDER_TO_GROUPS[p]:
-                    st.session_state[f"prov_{p}_{g}"] = True
+                st.session_state[f"prov_{p}_{group}"] = True
 
 
 def _render_providers_expander(expanded: bool = True) -> None:
     """Render grouped Providers expander with per-IOC-type sections."""
     for p, groups in _PROVIDER_TO_GROUPS.items():
-        global_val = st.session_state.get(f"provider_{p}", False)
         for g in groups:
             gkey = f"prov_{p}_{g}"
             if gkey not in st.session_state:
-                st.session_state[gkey] = global_val
+                st.session_state[gkey] = False
 
     for ioc_key in _GROUP_IOC_KEY.values():
         if ioc_key not in st.session_state:
@@ -682,18 +680,32 @@ if run_requested:
 def _auto_provider_flags(items: list[IOC], settings_obj: Settings) -> dict[str, bool]:
     types = {ioc.type for ioc in items}
     return {
-        "vt":        bool(settings_obj.vt_key)               and bool(types & {"ip", "domain", "url", "hash"}),
-        "urlscan":   bool(settings_obj.urlscan_key)           and bool(types & {"domain", "url"}),
-        "abuse":     bool(settings_obj.abuse_key)             and bool(types & {"ip", "domain", "url"}),
-        "tf":        bool(settings_obj.threatfox_key)         and bool(types & {"ip", "domain", "url", "hash"}),
-        "mb":        bool(settings_obj.malwarebazaar_key)     and "hash" in types,
-        "shodan":    bool(settings_obj.shodan_key)            and bool(types & {"ip", "domain", "url"}),
-        "dns":       bool(settings_obj.dnsdumpster_key)       and bool(types & {"domain", "url"}),
-        "ha":        bool(settings_obj.hybrid_analysis_key)   and bool(types & {"ip", "domain", "url", "hash"}),
-        "mxtoolbox": bool(settings_obj.mxtoolbox_key)         and bool(types & {"ip", "domain", "url", "email"}),
-        "whoxy":          bool(settings_obj.whoxy_key)             and bool(types & {"domain", "url", "whois"}),
-        "ransomware_live": bool(settings_obj.ransomware_live_key)  and bool(types & {"domain", "url", "whois"}),
+        "vt":             bool(settings_obj.vt_key)               and bool(types & {"ip", "domain", "url", "hash"}),
+        "urlscan":        bool(settings_obj.urlscan_key)           and bool(types & {"domain", "url"}),
+        "abuse":          bool(settings_obj.abuse_key)             and bool(types & {"ip", "domain", "url"}),
+        "tf":             bool(settings_obj.threatfox_key)         and bool(types & {"ip", "domain", "url", "hash"}),
+        "mb":             bool(settings_obj.malwarebazaar_key)     and "hash" in types,
+        "shodan":         bool(settings_obj.shodan_key)            and bool(types & {"ip", "domain", "url"}),
+        "dns":            bool(settings_obj.dnsdumpster_key)       and bool(types & {"domain", "url"}),
+        "ha":             bool(settings_obj.hybrid_analysis_key)   and bool(types & {"ip", "domain", "url", "hash"}),
+        "mxtoolbox":      bool(settings_obj.mxtoolbox_key)         and bool(types & {"ip", "domain", "url", "email"}),
+        "whoxy":          bool(settings_obj.whoxy_key)             and bool(types & {"whois"}),
+        "ransomware_live": bool(settings_obj.ransomware_live_key)  and bool(types & {"whois"}),
     }
+
+
+def _manual_payload_for_provider(
+    provider: str, items: list[IOC]
+) -> list[tuple[str, str]]:
+    """Return only the IOC tuples whose IOC group has this provider enabled."""
+    return [
+        (ioc.value, ioc.type)
+        for ioc in items
+        if st.session_state.get(
+            f"prov_{provider}_{_IOC_TYPE_TO_GROUP.get(ioc.type, '')}",
+            False,
+        )
+    ]
 
 
 # ── Right panel / Results ─────────────────────────────────────────────────────
@@ -706,41 +718,35 @@ with split_right:
             st.info("Tidak ada IOC valid setelah parsing.")
         else:
             ioc_payload = [(i.value, i.type) for i in items]
-            provider_flags = (
-                _auto_provider_flags(items, settings)
-                if auto_choose_provider
-                else {
-                    "vt":        bool(st.session_state.get("provider_vt")),
-                    "urlscan":   bool(st.session_state.get("provider_urlscan")),
-                    "abuse":     bool(st.session_state.get("provider_abuse")),
-                    "tf":        bool(st.session_state.get("provider_tf")),
-                    "mb":        bool(st.session_state.get("provider_mb")),
-                    "shodan":    bool(st.session_state.get("provider_shodan")),
-                    "dns":       bool(st.session_state.get("provider_dns")),
-                    "ha":        bool(st.session_state.get("provider_ha")),
-                    "mxtoolbox":      bool(st.session_state.get("provider_mxtoolbox")),
-                    "whoxy":          bool(st.session_state.get("provider_whoxy")),
-                    "ransomware_live": bool(st.session_state.get("provider_ransomware_live")),
+            if auto_choose_provider:
+                provider_flags = _auto_provider_flags(items, settings)
+                _payload = lambda _p: ioc_payload  # noqa: E731
+            else:
+                _payload = lambda _p: _manual_payload_for_provider(_p, items)  # noqa: E731
+                provider_flags = {
+                    p: bool(_payload(p)) for p in [
+                        "vt", "urlscan", "abuse", "tf", "mb", "shodan",
+                        "dns", "ha", "mxtoolbox", "whoxy", "ransomware_live",
+                    ]
                 }
-            )
 
-            vt_results = vt_cached(ioc_payload, settings.vt_key) if provider_flags["vt"] else {}
+            vt_results = vt_cached(_payload("vt"), settings.vt_key) if provider_flags["vt"] else {}
             urlscan_results = (
-                urlscan_cached(ioc_payload, settings.urlscan_key, allow_urlscan_submit)
+                urlscan_cached(_payload("urlscan"), settings.urlscan_key, allow_urlscan_submit)
                 if provider_flags["urlscan"]
                 else {}
             )
-            abuse_results = abuse_cached(ioc_payload, settings.abuse_key, CACHE_REV) if provider_flags["abuse"] else {}
-            tf_results = tf_cached(ioc_payload, settings.threatfox_key, CACHE_REV) if provider_flags["tf"] else {}
-            mb_results = mb_cached(ioc_payload, settings.malwarebazaar_key, CACHE_REV) if provider_flags["mb"] else {}
-            shodan_results = shodan_cached(ioc_payload, settings.shodan_key, CACHE_REV) if provider_flags["shodan"] else {}
-            dnsd_results = dnsd_cached(ioc_payload, settings.dnsdumpster_key, CACHE_REV) if provider_flags["dns"] else {}
-            ha_results = ha_cached(ioc_payload, settings.hybrid_analysis_key, CACHE_REV) if provider_flags["ha"] else {}
-            mxtoolbox_results = mxtoolbox_cached(ioc_payload, settings.mxtoolbox_key, CACHE_REV) if provider_flags.get("mxtoolbox") else {}
-            whoxy_results = whoxy_cached(ioc_payload, settings.whoxy_key, CACHE_REV) if provider_flags.get("whoxy") else {}
+            abuse_results   = abuse_cached(_payload("abuse"), settings.abuse_key, CACHE_REV)             if provider_flags["abuse"]   else {}
+            tf_results      = tf_cached(_payload("tf"), settings.threatfox_key, CACHE_REV)               if provider_flags["tf"]      else {}
+            mb_results      = mb_cached(_payload("mb"), settings.malwarebazaar_key, CACHE_REV)           if provider_flags["mb"]      else {}
+            shodan_results  = shodan_cached(_payload("shodan"), settings.shodan_key, CACHE_REV)          if provider_flags["shodan"]  else {}
+            dnsd_results    = dnsd_cached(_payload("dns"), settings.dnsdumpster_key, CACHE_REV)          if provider_flags["dns"]     else {}
+            ha_results      = ha_cached(_payload("ha"), settings.hybrid_analysis_key, CACHE_REV)         if provider_flags["ha"]      else {}
+            mxtoolbox_results      = mxtoolbox_cached(_payload("mxtoolbox"), settings.mxtoolbox_key, CACHE_REV)           if provider_flags["mxtoolbox"]      else {}
+            whoxy_results          = whoxy_cached(_payload("whoxy"), settings.whoxy_key, CACHE_REV)                       if provider_flags["whoxy"]           else {}
             ransomware_live_results = (
-                ransomware_live_cached(ioc_payload, settings.ransomware_live_key, CACHE_REV)
-                if provider_flags.get("ransomware_live")
+                ransomware_live_cached(_payload("ransomware_live"), settings.ransomware_live_key, CACHE_REV)
+                if provider_flags["ransomware_live"]
                 else {}
             )
             summary, rows = summarize_results(
