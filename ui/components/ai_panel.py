@@ -59,7 +59,7 @@ def render_ai_panel(run_results: dict, settings) -> None:
     if not settings.gemini_key:
         st.info("Gemini API key not set. Set the env var: GEMINI_KEY")
     ai_provider = st.selectbox("AI Provider", ["Gemini", "Groq"], key="ai_provider")
-    tone = st.selectbox("Tone", ["SOC L1 concise", "More formal"])
+    tone = st.selectbox("Tone", ["High level language", "SOC L1 concise", "More formal"])
     use_only_evidence = st.checkbox("Use only evidence shown (no guessing)", value=True)
     sanitize = st.checkbox("Sanitize sensitive data", value=True)
     if ai_provider == "Gemini":
@@ -223,7 +223,15 @@ def render_ai_panel(run_results: dict, settings) -> None:
             lines.append("Do not mention remediation or recommended actions.")
         lines.append("Return plain text only, no bullets.")
         lines.append("Use only the evidence provided. If evidence is insufficient, say 'inconclusive' and recommend next checks.")
-        lines.append(f"Tone: {tone}.")
+        if tone == "High level language":
+            lines.append("Tone: Write for an IT professional who understands systems and infrastructure but has no security background.")
+            lines.append("Avoid all security jargon — do not use terms like 'IOC', 'C2', 'threat actor', 'lateral movement', 'TTPs', 'MITRE', 'CVE', or similar.")
+            lines.append("Instead of naming tools or techniques, describe what they do in plain terms (e.g. instead of 'C2 beacon', say 'the affected machine was quietly sending data out to an external address').")
+            lines.append("Tell it as a short story: what was observed, what it could mean for the organisation, and why it is a concern.")
+            lines.append("Lead with impact — emphasise what could go wrong or what may already have happened, not how it was detected.")
+            lines.append("Keep the language natural and direct, as if briefing a senior IT manager who needs to understand urgency without a security lecture.")
+        else:
+            lines.append(f"Tone: {tone}.")
         if sanitize:
             lines.append("Sanitize sensitive data where possible.")
         # Shared process/action context — always included when values are present
@@ -1217,10 +1225,11 @@ def render_ai_panel(run_results: dict, settings) -> None:
 
         # ── Description below (full width, with copy) ───────────────────
         shown_desc = desc_text if desc_text else ""
-        st.session_state["ai_description"] = shown_desc
+        if st.session_state.get("ai_description") != shown_desc:
+            st.session_state["ai_description"] = shown_desc
         st.markdown("**IOC Description**")
         st.caption(f"~{len(shown_desc.split())} words" if shown_desc else "No description generated yet")
-        st.text_area("", value=shown_desc, height=180, key="ai_description", label_visibility="collapsed")
+        st.text_area("", height=180, key="ai_description", label_visibility="collapsed")
         if shown_desc:
             _desc_b64 = base64.b64encode(shown_desc.encode("utf-8")).decode("ascii")
             _desc_html = f"""

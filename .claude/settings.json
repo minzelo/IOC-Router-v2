@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(python -c ' *)",
-      "Bash(dir \"c:\\\\Users\\\\rahma\\\\Documents\\\\Raihan\\\\Jobs\\\\Compnet\\\\IOC router v2\" /s /b)"
+      "Bash(dir \"c:\\\\Users\\\\rahma\\\\Documents\\\\Raihan\\\\Jobs\\\\Compnet\\\\IOC router v2\" /s /b)",
+      "Bash(xargs grep -l \"cve\\\\|CVE\")"
     ]
   }
 }

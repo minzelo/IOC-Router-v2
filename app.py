@@ -440,7 +440,7 @@ if not _has_results:
                 with _ai_col1:
                     st.selectbox("AI Provider", ["Gemini", "Groq"], index=0, key="auto_ai_desc_provider")
                 with _ai_col2:
-                    st.selectbox("Tone", ["SOC L1 concise", "More formal"], index=0, key="auto_ai_tone")
+                    st.selectbox("Tone", ["High level language", "SOC L1 concise", "More formal"], index=0, key="auto_ai_tone")
                 _chk1, _chk2 = st.columns(2)
                 with _chk1:
                     st.checkbox("Use only evidence shown (no guessing)", value=True, key="auto_ai_use_only_evidence")
