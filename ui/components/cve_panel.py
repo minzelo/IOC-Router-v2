@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 NVD_CVE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
-_PAGE_SIZE = 10
-_CACHE_TTL = 3600  # 1 hour — matches st.cache_data TTL
+_NVD_MAX_PAGE = 2000  # NVD API hard limit per request
+_CACHE_TTL = 900  # 15 minutes — shorter TTL to keep 3-hour window fresh
 
 _SEVERITY_STYLE: dict[str, tuple[str, str]] = {
     "CRITICAL": ("#ef4444", "#2d0a0a"),
@@ -234,7 +234,7 @@ def _fetch_kev_data() -> dict[str, dict]:
 
 @st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
 def _fetch_nvd_page(pub_start: str, pub_end: str, start_index: int) -> dict:
-    """Fetch one page of CVEs from NVD API v2.
+    """Fetch one page of CVEs from NVD API v2 (up to _NVD_MAX_PAGE results).
 
     Args:
         pub_start: ISO-8601 start datetime string (UTC).
@@ -250,7 +250,7 @@ def _fetch_nvd_page(pub_start: str, pub_end: str, start_index: int) -> dict:
             params={
                 "pubStartDate": pub_start,
                 "pubEndDate": pub_end,
-                "resultsPerPage": _PAGE_SIZE,
+                "resultsPerPage": _NVD_MAX_PAGE,
                 "startIndex": start_index,
             },
             headers={"Accept": "application/json"},
@@ -270,60 +270,75 @@ def _fetch_nvd_page(pub_start: str, pub_end: str, start_index: int) -> dict:
 
 # ── Session state helpers ─────────────────────────────────────────────────────
 
-def _time_window() -> tuple[str, str]:
-    """Return (pub_start, pub_end) ISO strings (UTC) for NVD, anchored to WIB calendar days.
+def _time_window(hours: int) -> tuple[str, str]:
+    """Return (pub_start, pub_end) ISO strings (UTC) covering the last N hours.
 
-    The window starts at midnight WIB of the previous calendar day and ends now.
-    We convert to UTC for the NVD API request because NVD expects UTC timestamps.
-    Anchoring to WIB midnight (= UTC-7h of local midnight) ensures the full previous
-    day's CVE batch is included when viewed from Jakarta time.
+    Args:
+        hours: Number of hours back from now.
+
+    Returns:
+        Tuple of (pub_start, pub_end) formatted for the NVD API.
     """
     fmt = "%Y-%m-%dT%H:%M:%S.000"
-    now_wib = datetime.now(_WIB)
-    yesterday_midnight_wib = (now_wib - timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    # Convert both ends to UTC for the NVD API
-    pub_start_utc = yesterday_midnight_wib.astimezone(timezone.utc)
-    pub_end_utc = now_wib.astimezone(timezone.utc)
-    return pub_start_utc.strftime(fmt), pub_end_utc.strftime(fmt)
+    now_utc = datetime.now(timezone.utc)
+    start_utc = now_utc - timedelta(hours=hours)
+    return start_utc.strftime(fmt), now_utc.strftime(fmt)
 
 
 def _state_is_fresh() -> bool:
-    """Return True if cached session state is within the cache TTL."""
+    """Return True if cached session state is within the cache TTL.
+
+    Returns:
+        True if the last fetch was less than _CACHE_TTL seconds ago.
+    """
     fetched_at = st.session_state.get("cve_fetched_at", 0)
     return (time.time() - fetched_at) < _CACHE_TTL
 
 
-def _init_state() -> None:
-    """Initialize (or reset) the CVE panel session state and fetch first page."""
-    pub_start, pub_end = _time_window()
-    kev_data = _fetch_kev_data()
-    page = _fetch_nvd_page(pub_start, pub_end, start_index=0)
+def _fetch_all_for_window(hours: int) -> None:
+    """Fetch all CVEs for a given hour window and store in session state.
 
-    st.session_state["cve_items"] = [_parse_nvd_item(i, kev_data) for i in page["items"]]
-    st.session_state["cve_next_index"] = len(page["items"])
-    st.session_state["cve_total_nvd"] = page["total"]
+    Args:
+        hours: Number of hours back from now to use as the time window.
+    """
+    pub_start, pub_end = _time_window(hours)
+    kev_data = _fetch_kev_data()
+
+    all_items: list[dict] = []
+    total = 0
+    error = False
+    start_index = 0
+
+    while True:
+        page = _fetch_nvd_page(pub_start, pub_end, start_index=start_index)
+        if page["error"]:
+            error = True
+            break
+        total = page["total"]
+        all_items.extend(_parse_nvd_item(i, kev_data) for i in page["items"])
+        start_index += len(page["items"])
+        if start_index >= total or not page["items"]:
+            break
+
+    st.session_state["cve_items"] = all_items
+    st.session_state["cve_total_nvd"] = total
     st.session_state["cve_pub_start"] = pub_start
     st.session_state["cve_pub_end"] = pub_end
-    st.session_state["cve_error"] = page["error"]
+    st.session_state["cve_error"] = error
+    st.session_state["cve_hours"] = hours
     st.session_state["cve_fetched_at"] = time.time()
 
 
-def _load_next_page() -> None:
-    """Fetch and append the next page of CVEs to session state."""
-    pub_start = st.session_state["cve_pub_start"]
-    pub_end = st.session_state["cve_pub_end"]
-    start_index = st.session_state["cve_next_index"]
+def _init_state() -> None:
+    """Fetch all CVEs published in the last 3 hours and store in session state."""
+    _fetch_all_for_window(hours=3)
 
-    kev_data = _fetch_kev_data()
-    page = _fetch_nvd_page(pub_start, pub_end, start_index=start_index)
 
-    if not page["error"]:
-        new_items = [_parse_nvd_item(i, kev_data) for i in page["items"]]
-        st.session_state["cve_items"].extend(new_items)
-        st.session_state["cve_next_index"] += len(page["items"])
-        st.session_state["cve_total_nvd"] = page["total"]
+def _reset_state() -> None:
+    """Clear all CVE session state keys to force a fresh fetch on next render."""
+    for key in ("cve_items", "cve_total_nvd", "cve_pub_start",
+                "cve_pub_end", "cve_error", "cve_fetched_at", "cve_hours"):
+        st.session_state.pop(key, None)
 
 
 # ── HTML builders ─────────────────────────────────────────────────────────────
@@ -462,7 +477,7 @@ def render_cve_panel() -> None:
     error: bool = st.session_state.get("cve_error", False)
     items: list[dict] = st.session_state.get("cve_items", [])
     total_nvd: int = st.session_state.get("cve_total_nvd", 0)
-    next_index: int = st.session_state.get("cve_next_index", 0)
+    current_hours: int = st.session_state.get("cve_hours", 3)
 
     # ── Header ────────────────────────────────────────────────────────────────
     st.markdown(
@@ -471,7 +486,7 @@ def render_cve_panel() -> None:
         f'<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.88rem;'
         f'font-weight:700;color:#f5f7fb;letter-spacing:0.01em;">New CVE</span>'
         f'<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.65rem;'
-        f'color:#6b7280;">{total_nvd} total · NVD · since yesterday</span>'
+        f'color:#6b7280;">{total_nvd} total · NVD · last {current_hours}h</span>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -480,7 +495,7 @@ def render_cve_panel() -> None:
         st.warning("Unable to reach NVD API. Check your connection.")
         return
 
-    if not items and total_nvd == 0:
+    if not items and total_nvd == 0 and not error:
         st.markdown(
             '<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.75rem;'
             'color:#6b7280;text-align:center;padding:32px 0;border:1px solid rgba(255,255,255,0.06);'
@@ -590,6 +605,9 @@ def render_cve_panel() -> None:
             or search_query in v.get("description", "").lower()
         ]
 
+    # Sort newest-first
+    filtered.sort(key=lambda v: v.get("publishedRaw", ""), reverse=True)
+
     # ── CVE cards (fixed-height scrollable) ──────────────────────────────────
     if filtered:
         st.markdown(
@@ -599,13 +617,7 @@ def render_cve_panel() -> None:
             unsafe_allow_html=True,
         )
     else:
-        unloaded = total_nvd - next_index
-        if search_query:
-            hint = " Try broadening your search or loading more results."
-        elif unloaded > 0:
-            hint = f" Try loading more — {unloaded} unloaded result{'s' if unloaded != 1 else ''} remaining."
-        else:
-            hint = ""
+        hint = " Try broadening your search or filter." if search_query else ""
         st.markdown(
             f'<div style="height:320px;display:flex;align-items:center;justify-content:center;'
             f'font-family:\'JetBrains Mono\',monospace;font-size:0.75rem;color:#6b7280;'
@@ -615,22 +627,23 @@ def render_cve_panel() -> None:
             unsafe_allow_html=True,
         )
 
-    # ── View more ─────────────────────────────────────────────────────────────
+    # ── View more / Refresh ───────────────────────────────────────────────────
     st.markdown('<div style="margin-top:10px;"></div>', unsafe_allow_html=True)
-    has_more = next_index < total_nvd
-    if has_more:
-        remaining = total_nvd - next_index
-        col_btn, col_info = st.columns([2, 3])
-        with col_btn:
-            if st.button("View more", key="cve_view_more", use_container_width=True):
-                with st.spinner("Loading…"):
-                    _load_next_page()
-                st.rerun()
-        with col_info:
-            st.markdown(
-                f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.63rem;'
-                f'color:#6b7280;padding-top:6px;">'
-                f'{remaining} more result{"s" if remaining != 1 else ""} on NVD'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+    col_view, col_refresh, col_info = st.columns([2, 1, 3])
+    with col_view:
+        if st.button("View more", key="cve_view_more", use_container_width=True):
+            next_hours = current_hours + 3
+            with st.spinner(f"Loading last {next_hours} hours…"):
+                _fetch_all_for_window(hours=next_hours)
+            st.rerun()
+    with col_refresh:
+        if st.button("↺", key="cve_refresh", use_container_width=True,
+                     help="Reload newest CVEs from last 3 hours"):
+            _reset_state()
+            st.rerun()
+    with col_info:
+        st.markdown(
+            f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.63rem;'
+            f'color:#6b7280;padding-top:6px;">last {current_hours}h loaded</div>',
+            unsafe_allow_html=True,
+        )
